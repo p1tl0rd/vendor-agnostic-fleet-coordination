@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psipp-ctc"
+version = "0.1.0"
+description = "Prioritized Safe Interval Path Planning with Continuous-Time Conflict annotation (Python port)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pyyaml",
+]
+
+[project.scripts]
+psipp-generate-roadmap = "psipp_ctc.cli.roadmap_generation:main"
+psipp-plan = "psipp_ctc.cli.planner_benchmark:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

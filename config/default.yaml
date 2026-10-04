@@ -1,0 +1,12 @@
+# Default configuration for the Python port (placeholders, to be refined).
+
+roadmap_generation:
+  generator:
+    type: kPRM            # kPRM | CDT
+    number_of_vertices: 100
+    number_of_neighbors: 10
+
+planner_benchmark:
+  planner:
+    type: PSIPP           # PSIPP | CCBS
+    time_limit: 30.0      # seconds
