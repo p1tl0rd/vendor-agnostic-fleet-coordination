@@ -1,0 +1,6 @@
+# Reference source (will be ported later, then removed)
+/PSIPP-CTC_src/
+
+# Documents (reference material)
+*.pdf
+*.docx
