@@ -4,10 +4,9 @@ This is the working codebase for a **master's thesis**. It is not only a Python
 port of a paper: the PSIPP/CTC port is the planning core of a larger fleet
 coordination system.
 
-**Thesis title (expected):** "Xây dựng hệ thống điều phối bầy đàn không phụ thuộc
-nhà cung cấp (Vendor-Agnostic) ứng dụng cơ chế VDA 5050 Base/Horizon và thuật toán
-PSIPP" — *Building a vendor-agnostic multi-robot fleet coordination system using
-the VDA 5050 Base/Horizon mechanism and the PSIPP algorithm.*
+**Thesis title (expected):** *Building a vendor-agnostic multi-robot fleet
+coordination system using the VDA 5050 Base/Horizon mechanism and the PSIPP
+algorithm.*
 
 ## Aim and motivation
 
@@ -143,5 +142,5 @@ psipp-plan < roadmap_problem.txt > plan.txt
 4. Known PSIPP weaknesses (bottleneck deadlock, non-optimality, hard FIFO
    priority) are *features to improve*, not bugs to replicate — keep the port
    modular so planner policy (priority ordering, yielding) can be swapped.
-5. User-visible conventions: thesis reports and notes are Vietnamese; code,
-   comments, and this README are English.
+5. Language convention: code, comments, and documentation are English; the
+   source thesis documents in `docs/` are written in Vietnamese.
