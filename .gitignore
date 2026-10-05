@@ -5,6 +5,9 @@
 *.pdf
 *.docx
 
+# Agent tooling output (regenerate with /understand)
+.ua/
+
 # Python
 __pycache__/
 *.py[cod]
