@@ -19,12 +19,12 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 (data model) done.** Top-level `problem.py` with `Point`, `AgentTask`, `Move`, `Plan`, `ProblemInstance`, `ProblemInstanceWithGeometry`, `EdgeList`, `EdgeLengthTimer`. 25 unit tests pass. Subpackages and CLIs still empty. | The deliverable. `io` / `geometry` / `roadmap` / `ctc` / `planners` still need writing. |
+| `src/psipp_ctc/**` | **Stage 0 + Stage 1a + Stage 1b done.** Top-level `problem.py` has the data model + spatial data model (`SpatialTask`, `SpatialProblemInstance`). `io/roadmap.py` carries the roadmap text reader/writer. `io/spatial.py` carries the four spatial loaders (`load_spatial_problem`, `load_mapfb_grid`, `load_grip_map`, `load_mapfb_scenario`); 27 tests, all four byte-identical to the C++ oracle prints committed in `problem_instances/spatial/`. Geometry, roadmap generators, CTC, and planners still empty. | The deliverable. `geometry` / `roadmap` / `ctc` / `planners` still need writing. |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC_src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
 
-**Stage 0 (data model) is done; no other Phase 1 modules ported yet.** No planner, no I/O, no roadmap generators.
+**Stage 0, Stage 1a, and Stage 1b are done; no other Phase 1 modules ported yet.** No planner, no geometry, no roadmap generators, no CTC annotation. The spatial data model + loaders are in place but their geometry methods (`isInside`, `checkRoadspaceValidity`, `checkPlanValidity`) are stubs that need Stage 3.
 
 ## 3. The port order (do not reorder)
 
@@ -197,10 +197,11 @@ Found while analyzing `PSIPP-CTC_src/config/*.yaml`:
 briefs, the four-check verification gate, and a 15-row trap index. Use it to brief each
 port session; this section is only the short form.
 
-1. **Stage 0 (data model) — done.** `io` is next. Port `io/` and lock it down with round-trip
-   tests against real reference instances (copy samples out of `PSIPP-CTC_src/problem_instances/`
-   into `problem_instances/`). Stage 0 was inserted before `io` because `base/input.hpp` is a
-   template specialisation of `ProblemInstanceWithGeometry`.
+1. **Stage 0 (data model) — done.** **Stage 1a (roadmap text I/O) — done.** **Stage 1b
+   (spatial polygon + MAPF_Benchmark loaders) — done.** `geometry` is next (Stage 2).
+   The full port order is `io -> geometry -> roadmap -> ctc -> planners`; we have
+   finished both `io` halves. Stage 1b was split out from `io` because the spatial
+   side drags in the geometry backend via `isInside` (deferred to Stage 3).
 2. Then `geometry/` — the `getCollisionInterval` EEC kernel is the single most important
    routine in the whole system; unit-test it against hand-computed intervals before building
    anything on top. Reuse the reference's own property tests
