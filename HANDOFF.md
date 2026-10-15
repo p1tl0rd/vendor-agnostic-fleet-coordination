@@ -19,12 +19,12 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 + Stage 1a + Stage 1b done.** Top-level `problem.py` has the data model + spatial data model (`SpatialTask`, `SpatialProblemInstance`). `io/roadmap.py` carries the roadmap text reader/writer. `io/spatial.py` carries the four spatial loaders (`load_spatial_problem`, `load_mapfb_grid`, `load_grip_map`, `load_mapfb_scenario`); 27 tests, all four byte-identical to the C++ oracle prints committed in `problem_instances/spatial/`. Geometry, roadmap generators, CTC, and planners still empty. | The deliverable. `geometry` / `roadmap` / `ctc` / `planners` still need writing. |
+| `src/psipp_ctc/**` | **Stage 0 + Stage 1a + Stage 1b + Stage 2 done.** Top-level `problem.py` has the data model + spatial data model. `io/roadmap.py` carries the roadmap text reader/writer (byte-identical to C++ oracle prints). `io/spatial.py` carries the four spatial loaders. `geometry/geometry_2d.py` carries the three primitive solvers + VEC + EEC kernels + the moving-vs-moving check. `geometry/collision_report.py` carries `Buckets2D` and `BentleyOttoman` (the broad phase). `ProblemInstanceWithGeometry` carries the four concrete kernels (`collision_check_vv/ve/ee` + the VEC/EEC interval dispatcher with time-frame mirroring). 108 tests pass in 2.7 s, including 3 property families at 1000 random samples per family. Roadmap generators, CTC annotation, and planners still empty. | The deliverable. `roadmap` / `ctc` / `planners` still need writing. |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC_src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
 
-**Stage 0, Stage 1a, and Stage 1b are done; no other Phase 1 modules ported yet.** No planner, no geometry, no roadmap generators, no CTC annotation. The spatial data model + loaders are in place but their geometry methods (`isInside`, `checkRoadspaceValidity`, `checkPlanValidity`) are stubs that need Stage 3.
+**Stage 0, Stage 1a, Stage 1b, and Stage 2 are done; no other Phase 1 modules ported yet.** No planner, no roadmap generators, no CTC annotation. The geometry kernels + broad phase + dispatcher are in place; the kernels and dispatcher feed the CTC annotation (Stage 4) and the prioritized planner (Stage 5). The spatial data model + loaders are in place but their geometry methods (`isInside`, `checkRoadspaceValidity`, `checkPlanValidity`) are stubs that need Stage 3.
 
 ## 3. The port order (do not reorder)
 
