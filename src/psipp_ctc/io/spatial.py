@@ -566,3 +566,28 @@ def load_mapfb_scenario(
                 ) from exc
             tasks.append((start_x, start_y, goal_x, goal_y))
     return tasks
+
+
+def load_scenario(
+    path: Union[str, PathLike],
+    spatial: SpatialProblemInstance,
+) -> None:
+    """Append tasks from a ``.scen`` file to ``spatial`` (Stage 3).
+
+    Port of ``SpatialProblemInstance<Space2D>::loadScenario``
+    (``input_spatial.hpp:184-197``). For each task row, applies the
+    ``+0.5`` cell-centre offset, checks both endpoints via
+    ``spatial.is_inside``, and appends a ``SpatialTask`` iff both
+    pass. Tasks whose endpoints fall outside the (cleared) free
+    space are dropped (matching the C++ silently).
+
+    The ``+0.5`` offset here and the ``-1`` offset in
+    :func:`load_grip_map` are the two opposite signs called out in
+    PORTING.md §4 trap 18.
+    """
+    from psipp_ctc.problem import SpatialTask
+    for start_x, start_y, goal_x, goal_y in load_mapfb_scenario(path):
+        initial = Point(start_x + 0.5, start_y + 0.5)
+        goal = Point(goal_x + 0.5, goal_y + 0.5)
+        if spatial.is_inside(initial) and spatial.is_inside(goal):
+            spatial.tasks.append(SpatialTask(initial, goal))

@@ -2,7 +2,7 @@
 
 **Read this first if you are a new agent (or a returning human) on this repo.**
 
-Last updated: 2026-10-15 · Stage 0 (data model) ported · 25 tests pass
+Last updated: 2026-10-15 · Stage 0 + 1a + 1b + 2 + 3 done · 131 tests pass
 
 ---
 
@@ -19,12 +19,12 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 + Stage 1a + Stage 1b + Stage 2 done.** Top-level `problem.py` has the data model + spatial data model. `io/roadmap.py` carries the roadmap text reader/writer (byte-identical to C++ oracle prints). `io/spatial.py` carries the four spatial loaders. `geometry/geometry_2d.py` carries the three primitive solvers + VEC + EEC kernels + the moving-vs-moving check. `geometry/collision_report.py` carries `Buckets2D` and `BentleyOttoman` (the broad phase). `ProblemInstanceWithGeometry` carries the four concrete kernels (`collision_check_vv/ve/ee` + the VEC/EEC interval dispatcher with time-frame mirroring). 108 tests pass in 2.7 s, including 3 property families at 1000 random samples per family. Roadmap generators, CTC annotation, and planners still empty. | The deliverable. `roadmap` / `ctc` / `planners` still need writing. |
-| `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC_src/` line from `.gitignore` then). |
+| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 done.** `problem.py` has data model + spatial data model + `is_inside`, `is_edge_inside`, `get_bound`, `check_roadspace_validity`. `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py` (shapely backend, 6 ops), `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). Grid is byte-identical to the C++ oracle on `problem_instances/spatial/sample.txt` for K=1 and K=4 (5644 bytes each, `diff -q` clean). 131 tests pass in 3.0 s. CTC annotation and planners still empty. | The deliverable. `ctc` / `planners` still need writing. |
+| `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC-src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
 
-**Stage 0, Stage 1a, Stage 1b, and Stage 2 are done; no other Phase 1 modules ported yet.** No planner, no roadmap generators, no CTC annotation. The geometry kernels + broad phase + dispatcher are in place; the kernels and dispatcher feed the CTC annotation (Stage 4) and the prioritized planner (Stage 5). The spatial data model + loaders are in place but their geometry methods (`isInside`, `checkRoadspaceValidity`, `checkPlanValidity`) are stubs that need Stage 3.
+**Stage 0, 1a, 1b, 2, and 3 are done.** Grid produces byte-identical output to the C++ oracle on `problem_instances/spatial/sample.txt` for K=1 and K=4 (the only deterministic generator). kPRM is unseeded in the C++ (`std::random_device` + `std::default_random_engine`), so byte parity is impossible regardless of backend — the gate for kPRM/PRM is structural (every task connected, every edge passes `is_edge_inside`). CDT approximates CGAL's `Constrained_Delaunay_triangulation_2` (banned) with `scipy.spatial.Delaunay` + `shapely.buffer(-r)` offset filter; the whole-segment `is_edge_inside` clearance test is the load-bearing filter (replicated verbatim). Backend decision: **shapely + scipy.spatial.Delaunay** — see `src/psipp_ctc/roadmap/space_2d.py` module docstring.
 
 ## 3. The port order (do not reorder)
 

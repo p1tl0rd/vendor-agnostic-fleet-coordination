@@ -656,45 +656,135 @@ class SpatialProblemInstance:
         self.inners: List[List[Point]] = inners
         self.agent_geometry: float = agent_geometry
         self.tasks: List[SpatialTask] = tasks
+        # Lazy-built shapely Polygon (the Space2D backend). Built on
+        # first access via ``_space_polygon``; cached for the lifetime
+        # of the instance. Avoids paying the cost when a
+        # SpatialProblemInstance is created and immediately consumed in
+        # a way that does not need the backend.
+        self._space_polygon_cache = None  # type: ignore[var-annotated]
 
-    # -- Abstract geometry-backend methods (Stage 3) ---------------------
+    # -- Geometry backend (Stage 3) --------------------------------------
 
-    def is_inside(self, point: Point) -> bool:  # type: ignore[no-untyped-def]
-        """Stage 3 (geometry) implements via Space2D::checkVertexInside.
+    def _space_polygon(self):
+        """Lazily build the shapely Polygon backing the Space2D methods.
 
-        Shrinks the free space by ``agent_geometry - EPS`` and tests point
-        containment. Reference: ``spatial.hpp:29-31``.
+        Mirrors the C++ ``SpaceGeometry::Space`` type. Both ``outer`` and
+        each ``inners[i]`` are closed rings (first == last) per the
+        loaders in ``io/spatial.py``. shapely closes the ring
+        automatically so the loader's closing duplicate is dropped before
+        construction.
         """
-        raise NotImplementedError
+        if self._space_polygon_cache is None:
+            from psipp_ctc.roadmap.space_2d import _make_polygon
+            self._space_polygon_cache = _make_polygon(self.outer, self.inners)
+        return self._space_polygon_cache
+
+    def is_inside(self, point: Point) -> bool:
+        """True iff ``point`` is in the free polygon with ``agent_geometry``
+        clearance.
+
+        Mirrors ``SpatialProblemInstance<Space2D>::isInside(Point)``
+        (``spatial.hpp:29-31``) which delegates to
+        ``Space2D::checkVertexInside(space, point, agent_geometry - EPS)``.
+        The EPS is a *clearance margin*: a disc of radius
+        ``agent_geometry`` centred at ``point`` must not cross any
+        boundary.
+        """
+        from psipp_ctc.roadmap.space_2d import check_vertex_inside
+        return check_vertex_inside(
+            self._space_polygon(), point, self.agent_geometry - self.EPS
+        )
 
     def is_edge_inside(self, p0: Point, p1: Point) -> bool:
-        """Stage 3 (geometry) implements via Space2D::checkEdgeInside.
+        """True iff a disc of radius ``agent_geometry`` can travel along the
+        segment from ``p0`` to ``p1`` without crossing the boundary.
 
-        Reference: ``spatial.hpp:33-37``.
+        Mirrors ``spatial.hpp:33-37``. Used by the roadmap generators to
+        decide whether a candidate edge may be added: every edge of the
+        final roadmap must pass this test, otherwise the planner could
+        route an agent through a wall.
         """
-        raise NotImplementedError
+        from psipp_ctc.roadmap.space_2d import check_edge_inside
+        return check_edge_inside(
+            self._space_polygon(), p0, p1, self.agent_geometry - self.EPS
+        )
 
-    def get_bound(self, axis: int):
-        """Stage 3 implements. Reference: ``spatial.hpp:39-41``."""
-        raise NotImplementedError
+    def get_bound(self, axis: int) -> Tuple[float, float]:
+        """Bounding-box of the outer ring along ``axis`` (0 = x, 1 = y).
 
-    def check_roadspace_validity(self, problem_instance) -> bool:  # type: ignore[no-untyped-def]
-        """Stage 3 implements. Reference: ``spatial.hpp:43-91``.
-
-        Validates that every vertex and every edge of a generated roadmap
-        is inside the free polygon (shrunk by ``agent_geometry - EPS``),
-        that each task's start/goal matches the corresponding vertex in
-        the roadmap, and that the agent radii agree.
+        Mirrors ``spatial.hpp:39-41`` -> ``Space2D::getBound``. Used by
+        the Grid generator to size the cell lattice across the BBox;
+        cells that fall in holes are then dropped via ``is_inside``.
         """
-        raise NotImplementedError
+        from psipp_ctc.roadmap.space_2d import get_bound
+        return get_bound(self._space_polygon(), axis)
 
-    def check_plan_validity(self, plan, makespan, sum_of_costs) -> bool:
-        """Stage 3/5 implements. Reference: ``spatial.hpp:96-155``.
+    def check_roadspace_validity(
+        self, problem_instance: "ProblemInstanceWithGeometry"
+    ) -> bool:
+        """Validate a generated roadmap against the spatial problem.
 
-        Independent oracle for spatial plans: expands each agent's
-        ``(waypoint, arrival_time)`` list into timed segments, asserts every
-        segment lies in the free space, and sweeps events to detect any
-        pairwise disc collision. Populates ``makespan`` and
-        ``sum_of_costs``.
+        Mirrors ``spatial.hpp:43-91``. Three checks:
+
+        1. Every vertex of the roadmap lies in the free polygon (with
+           ``agent_geometry - EPS`` clearance). A single failure prints
+           to stderr and returns False.
+        2. Every edge of the roadmap lies in the free polygon (the
+           disc can travel from source to target without crossing the
+           boundary).
+        3. Each task's start/goal coordinate matches the corresponding
+           vertex in the roadmap (within EPS), and the agent radii
+           agree.
+
+        Returns True iff all three pass. The C++ also prints to stderr
+        on failure; the port raises ``ValueError`` instead so the test
+        harness can see which check failed.
         """
-        raise NotImplementedError
+        from psipp_ctc.roadmap.space_2d import check_edge_inside, check_vertex_inside
+        r = self.agent_geometry - self.EPS
+        n = problem_instance.get_number_of_vertices()
+        for vertex in range(n):
+            if not check_vertex_inside(
+                self._space_polygon(), problem_instance.get_point(vertex), r
+            ):
+                raise ValueError(
+                    f"roadspace validity: vertex {vertex} at "
+                    f"{problem_instance.get_point(vertex)} is outside the map"
+                )
+        for vertex in range(n):
+            for target in problem_instance.edges[vertex]:
+                if not check_edge_inside(
+                    self._space_polygon(),
+                    problem_instance.get_point(vertex),
+                    problem_instance.get_point(target),
+                    r,
+                ):
+                    raise ValueError(
+                        f"roadspace validity: edge {vertex} -> {target} "
+                        f"is outside the map"
+                    )
+        for i, task in enumerate(self.tasks):
+            init_v = problem_instance.tasks[i].initial_vertex
+            goal_v = problem_instance.tasks[i].goal_vertex
+            if math.hypot(
+                task.initial_point.x - problem_instance.get_point(init_v).x,
+                task.initial_point.y - problem_instance.get_point(init_v).y,
+            ) >= self.EPS:
+                raise ValueError(
+                    f"roadspace validity: task {i} initial point does not "
+                    f"match vertex {init_v}"
+                )
+            if math.hypot(
+                task.goal_point.x - problem_instance.get_point(goal_v).x,
+                task.goal_point.y - problem_instance.get_point(goal_v).y,
+            ) >= self.EPS:
+                raise ValueError(
+                    f"roadspace validity: task {i} goal point does not "
+                    f"match vertex {goal_v}"
+                )
+        if abs(problem_instance.agent_geometry - self.agent_geometry) >= self.EPS:
+            raise ValueError(
+                f"roadspace validity: agent_geometry mismatch "
+                f"({problem_instance.agent_geometry} vs {self.agent_geometry})"
+            )
+        return True
