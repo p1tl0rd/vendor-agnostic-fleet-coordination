@@ -1,7 +1,35 @@
 # AGENTS.md — PSIPP-CTC
 
 Project rules for agents and humans working in this repo. Full algorithm writeup in
-`docs/ARCHITECTURE.md`; current state, port order, and invariants in `HANDOFF.md`.
+`docs/ARCHITECTURE.md`; current state, port order, and invariants in `HANDOFF.md`;
+how to run the port, per-stage briefs, and the verification gate in `docs/PORTING.md`.
+
+## How to talk to the repo owner
+
+The owner is the thesis author. They know the **idea** of PSIPP/CTC, they read Python,
+and they read their own Vietnamese research report in `docs/`. **They do not read C++,
+and `PSIPP-CTC_src/` is opaque to them.** They stay in the loop during the port and will
+ask questions.
+
+- **Explain in algorithm terms, not code terms.** Say what happened to the robots, the
+  roadmap, or the time intervals — not what the reference's classes, templates, or
+  files do.
+- **Never justify a decision with "the C++ does X" alone.** Follow with what X *means*:
+  "the C++ stores a wait as a negative edge id — the robot stays put on a vertex."
+- **Define every term the first time it appears in a session.** The paper's own terms
+  (VV, VEC, EEC, safe interval) are fine once defined. Assume no knowledge of CGAL,
+  boost::geometry, `fscanf`, `std::set` iterators, template specialisation, or the
+  reference's abbreviations.
+- **Lead progress reports with what changed in behaviour** — what a plan now looks
+  like, which numbers moved — then the code location. Not the reverse.
+- **To explain a trap or divergence**, use: plain description → small concrete example
+  → why it changes the plan. Analogies are welcome and encouraged.
+- **Code blocks are evidence, not explanation.** Pasting a diff is never a complete
+  answer.
+- **Answer patiently and concretely.** "It's in the C++" or a bare file path is not an
+  answer. If the question reveals a misunderstanding, correct it kindly and directly.
+- **When a step involves a silent trap**, say what would go wrong in the robots' plan
+  if it were "fixed" — not just that the reference is unusual.
 
 ## C++ → Python porting
 

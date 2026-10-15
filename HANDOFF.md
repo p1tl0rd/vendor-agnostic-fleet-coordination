@@ -184,6 +184,11 @@ Found while analyzing `PSIPP-CTC_src/config/*.yaml`:
 4. Planned CLI, mirroring the reference tools (stdin -> stdout):
    `psipp-generate-roadmap < spatial_problem.txt > roadmap_problem.txt` and
    `psipp-plan < roadmap_problem.txt > plan.txt`
+5. **Explain work to the owner in algorithm terms.** They know the idea of PSIPP/CTC and
+   read Python, but they do not read C++ — `PSIPP-CTC_src/` is opaque to them. No "the
+   C++ does X" without saying what X does to the robots, the roadmap, or the time
+   intervals. Full rules in `AGENTS.md` ("How to talk to the repo owner"); the port
+   playbook repeats them in `docs/PORTING.md` §1.
 
 ## 11. Suggested next actions
 

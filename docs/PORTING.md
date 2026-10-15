@@ -27,11 +27,32 @@ Each session runs this loop:
 3. **Read** — `HANDOFF.md` in full, then the `ARCHITECTURE.md` sections named in the brief.
 4. **Port** — the named C++ files only. No stage N+1 work.
 5. **Verify** — pass the four checks in §10 with raw pasted output.
-6. **Record** — update `HANDOFF.md` §2 (state table) and §11, then commit.
+6. **Explain** — report in algorithm terms and stay available for questions (below).
+7. **Record** — update `HANDOFF.md` §2 (state table) and §11, then commit.
 
 Why one stage per session: stages 2–5 each build on an untested module if the agent
 runs ahead. The port order exists because a wrong `geometry/` makes every downstream
 result silently wrong — no crash, just wrong makespan.
+
+### Who you are talking to
+
+**The owner does not read C++.** They know the idea of PSIPP/CTC, they read Python, and
+they will ask questions during the session. `AGENTS.md` has the full rules; the short
+version:
+
+- Explain in **algorithm terms**: robots, roadmap, time intervals, plans. Not classes,
+  templates, or file names.
+- Lead with **what changed in behaviour** and which numbers moved, then the location.
+- **Define each term once per session.** No assumed knowledge of CGAL, boost::geometry,
+  `fscanf`, `std::set` iterators, or template specialisation.
+- To explain a trap: plain description → small concrete example → what it does to the
+  robots' plan. A diff is evidence, never an explanation.
+- Answer questions patiently and concretely. "It's in the C++" is not an answer.
+
+This matters for correctness, not just manners. Every trap in §11 is designed to survive
+pytest. The owner's questions are a second independent check on the same failure mode:
+if you cannot explain what a step does to the plan in plain language, you do not yet know
+that it is correct.
 
 ### The dependency correction
 
@@ -522,4 +543,6 @@ Always include in every brief:
 - The exact C++ file list with line counts
 - The preserve-exactly list
 - `Report all four done-checks from docs/PORTING.md §10 with raw output.`
+- `Explain each step in algorithm terms — what it does to the robots, the roadmap, or
+  the time intervals. The owner does not read C++. Leave the questions open.`
 - `Update HANDOFF.md §2 and §11, then commit.`
