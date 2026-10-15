@@ -187,10 +187,17 @@ Found while analyzing `PSIPP-CTC_src/config/*.yaml`:
 
 ## 11. Suggested next actions
 
+**The operational playbook for the port is `docs/PORTING.md`** — per-stage session
+briefs, the four-check verification gate, and a 15-row trap index. Use it to brief each
+port session; this section is only the short form.
+
 1. Port `io/` first and lock it down with round-trip tests against real reference instances
    (copy samples out of `PSIPP-CTC_src/problem_instances/` into `problem_instances/`).
+   Note: `docs/PORTING.md` §1 inserts **Stage 0 = data model** before `io`, because
+   `base/input.hpp` is a template specialisation of `ProblemInstanceWithGeometry`.
 2. Then `geometry/` — the `getCollisionInterval` EEC kernel is the single most important
    routine in the whole system; unit-test it against hand-computed intervals before building
-   anything on top.
+   anything on top. Reuse the reference's own property tests
+   (`PSIPP-CTC_src/src/test/geometry_2D_test.cpp`).
 3. Keep the reference available and re-run the Docker oracle after each stage.
 4. Do not delete `PSIPP-CTC_src/` until the port is verified.
