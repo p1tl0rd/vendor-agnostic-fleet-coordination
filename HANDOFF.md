@@ -2,7 +2,7 @@
 
 **Read this first if you are a new agent (or a returning human) on this repo.**
 
-Last updated: 2026-10-05 · Knowledge graph built from commit `8a4ebcb` · 108 files analyzed
+Last updated: 2026-10-15 · Stage 0 (data model) ported · 25 tests pass
 
 ---
 
@@ -19,12 +19,12 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Skeleton only.** 4 empty subpackages + 2 CLI stubs that `raise SystemExit("not implemented yet")`. 1 smoke test asserting `__version__`. | The deliverable. Everything here still needs writing. |
+| `src/psipp_ctc/**` | **Stage 0 (data model) done.** Top-level `problem.py` with `Point`, `AgentTask`, `Move`, `Plan`, `ProblemInstance`, `ProblemInstanceWithGeometry`, `EdgeList`, `EdgeLengthTimer`. 25 unit tests pass. Subpackages and CLIs still empty. | The deliverable. `io` / `geometry` / `roadmap` / `ctc` / `planners` still need writing. |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC_src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
 
-**Nothing in Phase 1 of the README roadmap is implemented yet.** No porting has started.
+**Stage 0 (data model) is done; no other Phase 1 modules ported yet.** No planner, no I/O, no roadmap generators.
 
 ## 3. The port order (do not reorder)
 
@@ -196,10 +196,10 @@ Found while analyzing `PSIPP-CTC_src/config/*.yaml`:
 briefs, the four-check verification gate, and a 15-row trap index. Use it to brief each
 port session; this section is only the short form.
 
-1. Port `io/` first and lock it down with round-trip tests against real reference instances
-   (copy samples out of `PSIPP-CTC_src/problem_instances/` into `problem_instances/`).
-   Note: `docs/PORTING.md` §1 inserts **Stage 0 = data model** before `io`, because
-   `base/input.hpp` is a template specialisation of `ProblemInstanceWithGeometry`.
+1. **Stage 0 (data model) — done.** `io` is next. Port `io/` and lock it down with round-trip
+   tests against real reference instances (copy samples out of `PSIPP-CTC_src/problem_instances/`
+   into `problem_instances/`). Stage 0 was inserted before `io` because `base/input.hpp` is a
+   template specialisation of `ProblemInstanceWithGeometry`.
 2. Then `geometry/` — the `getCollisionInterval` EEC kernel is the single most important
    routine in the whole system; unit-test it against hand-computed intervals before building
    anything on top. Reuse the reference's own property tests
