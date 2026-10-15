@@ -66,7 +66,7 @@ inline ProblemInstanceWithGeometry<Geometry2D>::ProblemInstanceWithGeometry(
     const std::string &file_path) {
 ```
 
-and `getEdgeLength` (`base/problem_with_geometry.hpp:54`) calls `Geometry::distance`.
+and `getEdgeLength` (`base/problem_with_geometry.hpp:53-54`) calls `Geometry::distance`.
 The real chain is:
 
 ```
@@ -96,7 +96,7 @@ not wander):
 |---|---|
 | `planners/ExtendedIncreasingCostTreeSearch.cpp` (377) | ICTS baseline. `makePlanner` has no YAML branch for it → unreachable dead code |
 | `planners/WrappedContinuousCBS2.cpp` (781) | CCBS integration. Shells out to the vendored solver via temp GraphML/XML. Separate decision, not part of the core port |
-| `base/problem_with_grid.hpp` (358) | Lattice variant. Contains a known `edge_id` shadowing bug and a missing `all_collision_edges.clear()` |
+| `base/problem_with_grid.hpp` (358) | Lattice variant. Two known defects: `getAllEECollisions` declares a local `int edge_id` that shadows its parameter (`:346`), and it pushes to `all_collision_edges` without ever clearing it, so results accumulate across calls (`:337-354`) |
 | `base/problem_with_turning.hpp` (254) | Kinematics work — Phase 3, not the port |
 | `base/benchmark.hpp` (433) | Metrics harness. Port opportunistically once a planner exists; not a stage |
 | `third_party/Continuous-CBS/**` | Vendored, unmodified, not ported |
@@ -140,7 +140,7 @@ from docs/PORTING.md §10.
 ### Trap: `setNumberOfVertex` is overridden
 
 Base (`problem.hpp:23-27`) resizes `edges` only. The geometry subclass
-(`problem_with_geometry.hpp:26-30`) resizes `coordinates` **and** clears/resizes `edges`.
+(`problem_with_geometry.hpp:29-33`) resizes `coordinates` **and** clears/resizes `edges`.
 Port both behaviours on the right class, or `coordinates` and `edges` silently desync.
 
 ### Trap: do not add an `Edge` dataclass
@@ -239,12 +239,12 @@ Report all four done-checks from docs/PORTING.md §10 with raw output.
 
 | Constant | Value | Where |
 |---|---|---|
-| `Geometry2D::EPS` | `0` | `geometry_2D.hpp` |
+| `Geometry2D::EPS` | `0` | `geometry_2D.hpp:23` |
 | `ProblemInstance::EPS` | `1e-8` | `problem.hpp:21` |
-| `SpatialProblemInstance::EPS` | `1e-6` | `spatial.hpp:26` |
+| `SpatialProblemInstance::EPS` | `1e-6` | `spatial.hpp:27` |
 
 Three classes, three values. `isInside` shrinks the free space by
-`agent_geometry - EPS` (`spatial.hpp:29`), so `SpatialProblemInstance::EPS` is a
+`agent_geometry - EPS` (`spatial.hpp:29-30`), so `SpatialProblemInstance::EPS` is a
 clearance margin, not a comparison tolerance. Do not unify any of them.
 
 ### Trap: `loadMAPFBGrid` silently discards part of the map
@@ -267,8 +267,8 @@ containment test.
 
 They are not even in the same file:
 
-- `base/input_spatial.hpp:15-50` — `loadTextFile` reads `[number_of_holes, number_of_agents]`
-  on one line, then the outer ring, then per-hole rings, then `agent_geometry`, then the
+- `base/input_spatial.hpp:15-50` — `loadTextFile` reads `number_of_holes` and
+  `number_of_agents` as the first two whitespace-separated tokens, then the outer ring, then per-hole rings, then `agent_geometry`, then the
   agent points.
 - `experiments/simplify_grid.cpp:9-33` — `printTextFile` writes `number_of_holes`, then
   `number_of_outer_vertices`, then the rings, then `[number_of_agents, agent_geometry]`,
@@ -394,13 +394,19 @@ ConstrainedTriangulation. Grid has no external dependency; CDT needs the most wo
 
 Preserve exactly:
  - the adjacency-list output contract: edges[v] = [target, ...]
- - kPRM default K = ceil((e*(1+1/dim)+eps) * log n) when number_of_neighbors is omitted
+ - kPRM default K = ceil((e*(1+1/dim)+small_value) * log n) when `number_of_neighbors`
+   is omitted (`e` is Euler's number, i.e. `std::exp(1.)`; `small_value` is the
+   reference's slack constant — not one of the three EPS values)
  - kPRM number_of_vertices = 0 means NO random vertices: the graph is exactly the
    2*tasks agent start/goal vertices
  - both PRM variants append 2 start/goal vertices per task
- - CDT offsets every obstacle ring INWARD by the agent radius as a hard constraint,
-   which is what makes every finite CDT edge collision-free for a disc
- - isInside tests with clearance agent_geometry - EPS (spatial.hpp:29), not a bare
+ - CDT never inserts the raw ring edges as constraints. It builds offset borders at the
+   agent radius, inserts an offset segment as a hard constraint only when both endpoints
+   AND the whole segment pass isInside (ConstrainedTriangulation.cpp:71-82), then keeps
+   only CDT edges whose segment also passes isInside (:103). That clearance filter is what
+   makes every finite CDT edge collision-free for a disc — replicate the filter, not just
+   the offset
+ - isInside tests with clearance agent_geometry - EPS (spatial.hpp:29-30), not a bare
    containment test
 
 Tests: generate a roadmap for a small instance with each generator; assert the
@@ -448,6 +454,11 @@ Preserve exactly:
  - the four query overrides: VV (:268), VE (:271), EV (:275), EE (:279) — they are
    pure map lookups, no geometry
  - the (-upper, -lower) negation and swap conventions in the VE/EV dispatchers
+ - the VV test is a SET LOOKUP, not a distance call: `collision_pairs_v2v` is built from
+   `Buckets2D(2*agent_geometry - EPS, ...)` (:143, pair test `distance < radius`), and
+   `CollisionCheck(vertex_0, vertex_1)` (:208-212) just queries that set. So VV means
+   `distance < 2r - EPS` here — NOT the geometric instance's strict `distance < 2r`.
+   Pairs inside that EPS band disagree between the two implementations
 
 Tests: port src/test/explicit_collision_test.cpp (72 lines) as a DIFFERENTIAL test.
 It builds both the geometric instance and the annotated instance and asserts they
@@ -596,15 +607,15 @@ Reject any of these as proof of completion:
 
 | # | Trap | Where |
 |---|---|---|
-| 1 | `setNumberOfVertex` is overridden and resizes coordinates too | `problem_with_geometry.hpp:26-30` vs `problem.hpp:23-27` |
+| 1 | `setNumberOfVertex` is overridden and resizes coordinates too | `problem_with_geometry.hpp:29-33` vs `problem.hpp:23-27` |
 | 2 | Do not invent an `Edge` class — an edge id is an out-list index | `problem.hpp:28` |
 | 3 | `printTextFile` is driver-local and NOT the inverse of `loadTextFile` | `experiments/simplify_grid.cpp:9` vs `input_spatial.hpp:15` |
 | 4 | `fscanf` is whitespace-tokenised, not line-based | `input.hpp:22-41` |
-| 5 | **Three** different EPS constants in three classes | `Geometry2D::EPS=0`, `ProblemInstance::EPS=1e-8` (`problem.hpp:21`), `SpatialProblemInstance::EPS=1e-6` (`spatial.hpp:26`) |
+| 5 | **Three** different EPS constants in three classes | `Geometry2D::EPS=0` (`geometry_2D.hpp:23`), `ProblemInstance::EPS=1e-8` (`problem.hpp:21`), `SpatialProblemInstance::EPS=1e-6` (`spatial.hpp:27`) |
 | 6 | Intervals are open and real-valued; boundary at 1e-8 is observable | `geometry_2D.hpp:134,164` |
 | 7 | kPRM RNG is unseeded → parity is plan validity, not bytes | `ProbabilisticRoadmap.cpp` |
 | 8 | kPRM `number_of_vertices=0` → only the `2*tasks` task vertices | `HANDOFF.md` §8 |
-| 9 | CDT offsets obstacle rings inward by the agent radius | `ConstrainedTriangulation.cpp` |
+| 9 | CDT keeps only edges whose segment passes the `isInside` clearance filter | `ConstrainedTriangulation.cpp:71-82,103` |
 | 10 | `generated.txt` is referenced by the reference's own test but absent | `explicit_collision_test.cpp:14` |
 | 11 | `priority_order` as a generation counter — looks like a bug, is not | `PrioritizedSIPP.cpp:83-306` |
 | 12 | Negative `edge_id` = wait; `getAllVECollisions` negates and swaps | `problem.hpp:299-312` |
@@ -614,7 +625,8 @@ Reject any of these as proof of completion:
 | 16 | `loadMAPFBGrid` keeps only ONE connected component; the rest becomes obstacles | `input_spatial.hpp:75-102` |
 | 17 | `loadGripMap` decides outer vs hole by **trace order**, not containment | `input_spatial.hpp:143-158` |
 | 18 | Two opposite coordinate offsets: `-1` in `loadGripMap`, `+0.5` in `loadScenario` | `input_spatial.hpp:147,154` vs `:190,192` |
-| 19 | `isInside` shrinks free space by `agent_geometry - EPS`; it is clearance, not tolerance | `spatial.hpp:29,33` |
+| 19 | `isInside` shrinks free space by `agent_geometry - EPS`; it is clearance, not tolerance | `spatial.hpp:29-30,33-36` |
+| 20 | Explicit VV collision is a set lookup at cutoff `distance < 2r - EPS`, not the geometric strict `distance < 2r` — the two instances disagree inside that band | `problem_with_explicit_collisions.hpp:143,208-212` |
 
 ---
 

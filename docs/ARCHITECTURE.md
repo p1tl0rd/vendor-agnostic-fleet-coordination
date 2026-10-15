@@ -232,13 +232,17 @@ because edge length is reused as time.
 
 - **`ProbabilisticRoadmap.cpp`** — two variants. A template `KNearestProbabilisticRoadmap`
   keeping the `K` closest points per sample, with logarithmic default
-  `K = ceil((e*(1+1/dim)+eps) * log n)`; and `RadiusProbabilisticRoadmap2D`, which uses
+  `K = ceil((e*(1+1/dim)+small_value) * log n)` where `e` is Euler's number and
+  `small_value` is a slack constant; and `RadiusProbabilisticRoadmap2D`, which uses
   spatial-hash buckets to connect all points inside a radius. Both append two extra start/goal
   vertices per task.
 - **`ConstrainedTriangulation.cpp`** — CGAL `Constrained_Delaunay_triangulation_2`. Task
-  endpoints and random interior samples are triangulated; **each obstacle ring is offset
-  inward by the agent radius and inserted as a hard constraint**, so every finite CDT edge is
-  guaranteed collision-free for a disc agent.
+  endpoints and random interior samples are triangulated. The raw ring edges are never
+  inserted; instead each ring gets an offset border at the agent radius, and an offset
+  segment becomes a hard constraint only where both endpoints and the whole segment pass
+  the clearance test (`isInside`, i.e. stay `r` away from the true boundary). Finally every
+  CDT edge must pass the same whole-segment clearance test. That filter — not the offset
+  alone — is what guarantees every finite CDT edge is collision-free for a disc agent.
 - **`Grid.cpp`** — uniform 2D grid. Cell centres inside free space become vertices; symmetric
   edges are added between neighbours whose connecting segment stays inside free space; each task
   start/goal is appended as its own vertex wired to the four surrounding cells.
