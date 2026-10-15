@@ -473,30 +473,84 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     def get_collision_interval(  # type: ignore[no-untyped-def,override]
         self, *args, **kwargs
     ):
-        """Two time-frame-mirroring overloads.
+        """Four overloads: two kernel forms, two time-mirror forms.
 
-        * ``get_collision_interval(v0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            Mirrors ``problem.hpp:185-207``. If ``eid1 < 0`` (agent 1 is
+        The arity picks the form:
+
+        * 3 args ``(v0, sv1, eid1) -> (collide, lo, up)``
+            VEC kernel form. Mirrors
+            ``ProblemInstanceWithGeometry::getCollisionInterval(v0, sv1,
+            eid1, &lo, &up)`` (``problem_with_geometry.hpp:106-119``).
+            Returns the VEC interval ``[lo, up]`` *relative to agent
+            1's start* (``st1 = 0``). If ``length == 0`` the kernel
+            skips and returns ``(False, 0, 0)``; otherwise it runs
+            ``get_collision_interval_vec`` exactly.
+
+        * 4 args ``(sv0, eid0, sv1, eid1) -> (collide, lo, up)``
+            EEC kernel form. Mirrors
+            ``ProblemInstanceWithGeometry::getCollisionInterval(sv0,
+            eid0, sv1, eid1, &lo, &up)`` (``problem_with_geometry.hpp:171-187``).
+            Returns the EEC interval ``[lo, up]`` *relative to agent
+            1's start*. Skips if either edge has length 0; otherwise
+            runs ``get_collision_interval_eec`` exactly.
+
+        * 5 args ``(v0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
+            VEC time-mirror form. Mirrors ``ProblemInstance::
+            getCollisionInterval(v0, sv1, st1, eid1, tt1, &lo, &up)``
+            (``problem.hpp:185-207``). If ``eid1 < 0`` (agent 1 is
             waiting), the interval is ``[st1, tt1]`` if the agents
-            conflict; otherwise the kernel is a no-op. If ``eid1 >= 0``,
-            the VEC kernel is run and its ``[lower, upper]`` (relative
-            to agent 1's clock) is shifted into the caller's frame by
-            ``lower += st1, upper += st1``.
+            conflict; otherwise the kernel is a no-op. If ``eid1 >=
+            0``, the VEC kernel is run and its ``[lower, upper]``
+            (relative to agent 1's clock) is shifted into the
+            caller's frame by ``lower += st1, upper += st1``.
 
-        * ``get_collision_interval(sv0, eid0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            Mirrors ``problem.hpp:233-254``. If ``eid1 < 0``, the
+        * 6 args ``(sv0, eid0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
+            EEC time-mirror form. Mirrors ``ProblemInstance::
+            getCollisionInterval(sv0, eid0, sv1, st1, eid1, tt1, &lo,
+            &up)`` (``problem.hpp:233-254``). If ``eid1 < 0``, the
             EEC kernel is run with agent 1's clock as the inner
-            variable and the result is mirrored: ``lower = st1 - lower,
-            upper = tt1 - upper`` (reverse-time convention; do NOT
-            "fix" the signs -- see ``cpp-to-python`` skill rule 9). If
-            ``eid1 >= 0``, the EEC kernel is run in the normal way
-            and shifted by ``st1``.
+            variable and the result is mirrored: ``lower = st1 -
+            lower, upper = tt1 - upper`` (reverse-time convention;
+            do NOT "fix" the signs -- see ``cpp-to-python`` skill
+            rule 9). If ``eid1 >= 0``, the EEC kernel is run in the
+            normal way and shifted by ``st1``.
         """
         from psipp_ctc.geometry.geometry_2d import (
             get_collision_interval_eec,
             get_collision_interval_vec,
         )
         n = len(args)
+        if n == 3:
+            # VEC kernel form: 3-arg call, no time frame, lo/up
+            # relative to agent 1's clock (st1 = 0).
+            v0, sv1, eid1 = args
+            p0 = self.coordinates[v0]
+            sp1 = self.coordinates[sv1]
+            tv1 = self.edges[sv1][eid1]
+            tp1 = self.coordinates[tv1]
+            dt1 = self.get_edge_length(sv1, eid1)
+            if dt1 < self.EPS:
+                return (False, 0.0, 0.0)
+            return get_collision_interval_vec(
+                p0, sp1, tp1, dt1, self.agent_geometry
+            )
+        if n == 4:
+            # EEC kernel form: 4-arg call, no time frame, lo/up
+            # relative to agent 1's clock.
+            sv0, eid0, sv1, eid1 = args
+            sp0 = self.coordinates[sv0]
+            tv0 = self.edges[sv0][eid0]
+            tp0 = self.coordinates[tv0]
+            sp1 = self.coordinates[sv1]
+            tv1 = self.edges[sv1][eid1]
+            tp1 = self.coordinates[tv1]
+            dt0 = self.get_edge_length(sv0, eid0)
+            dt1 = self.get_edge_length(sv1, eid1)
+            if dt0 < self.EPS or dt1 < self.EPS:
+                return (False, 0.0, 0.0)
+            return get_collision_interval_eec(
+                sp0, tp0, dt0, sp1, tp1, dt1, self.agent_geometry
+            )
         if n == 5:
             v0, sv1, st1, eid1, tt1 = args
             if eid1 < 0:
@@ -508,6 +562,8 @@ class ProblemInstanceWithGeometry(ProblemInstance):
             tv1 = self.edges[sv1][eid1]
             tp1 = self.coordinates[tv1]
             dt1 = self.get_edge_length(sv1, eid1)
+            if dt1 < self.EPS:
+                return (False, 0.0, 0.0)
             collide, lo, up = get_collision_interval_vec(
                 p0, sp1, tp1, dt1, self.agent_geometry
             )
@@ -529,6 +585,8 @@ class ProblemInstanceWithGeometry(ProblemInstance):
                 tv0 = self.edges[sv0][eid0]
                 tp0 = self.coordinates[tv0]
                 dt0 = self.get_edge_length(sv0, eid0)
+                if dt0 < self.EPS:
+                    return (False, 0.0, 0.0)
                 collide, lo, up = get_collision_interval_vec(
                     p0, sp0, tp0, dt0, self.agent_geometry
                 )
@@ -546,6 +604,8 @@ class ProblemInstanceWithGeometry(ProblemInstance):
             tp1 = self.coordinates[tv1]
             dt0 = self.get_edge_length(sv0, eid0)
             dt1 = self.get_edge_length(sv1, eid1)
+            if dt0 < self.EPS or dt1 < self.EPS:
+                return (False, 0.0, 0.0)
             collide, lo, up = get_collision_interval_eec(
                 sp0, tp0, dt0, sp1, tp1, dt1, self.agent_geometry
             )

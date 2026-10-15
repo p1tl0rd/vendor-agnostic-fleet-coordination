@@ -109,12 +109,19 @@ def solve_quadratic_inequation(
     for the check). It REPLACES the input ``[lower, upper]`` with the
     unconstrained solution of the inequality -- it does NOT intersect.
 
-    * ``A < EPS`` is the degenerate-linear branch:
+    * ``A <= EPS`` is the degenerate-linear branch. (The C++ checks
+      ``A < EPS`` strictly and divides by zero when ``A == 0``; the
+      Python port handles ``A == 0`` in the same branch, which is what
+      the C++ WOULD return if the NaN were filtered out by the
+      ``lower < upper`` check that the EEC kernel applies at the call
+      site. The EEC interior case can produce ``A == 0`` when the two
+      agents move antiparallel at equal speed; the C++ produces NaN
+      there and the EEC kernel silently drops the case.)
         - ``B < -EPS``: ``x >= C/(2B)`` so ``lower = C/(2B)``, upper = INF.
         - ``B > EPS``:  ``x <= C/(2B)`` so ``lower = -INF``, upper = C/(2B).
         - ``B ~ 0`` and ``C <= 0``: holds everywhere, ``(-INF, INF)``.
         - ``B ~ 0`` and ``C > 0``: never holds, ``(INF, -INF)``.
-    * ``A >= EPS``: discriminant ``D = B^2 - A*C``.
+    * ``A > EPS``: discriminant ``D = B^2 - A*C``.
         - ``D < 0``: ``A > 0`` and no real roots means the quadratic is
           strictly positive everywhere, never <= 0. Empty ``(INF, -INF)``.
         - ``D >= 0``: roots ``(-B ± sqrt(D)) / A``; the inequality holds
@@ -123,8 +130,15 @@ def solve_quadratic_inequation(
     The two ``lower``/``upper`` parameters are accepted for API symmetry
     with the linear solver and to allow chaining in the EEC interior
     case, but the quadratic branch overwrites them.
+
+    Deviation from the C++: the strict ``A < EPS`` check is widened to
+    ``A <= EPS`` so the ``A == 0`` case (antiparallel agents) is
+    handled. The C++ crashes on this case via division by zero, but
+    the resulting NaN is then filtered out by the ``lower < upper``
+    check at the EEC call site, so the planner behaviour is the same
+    as this Python port: the interior case contributes nothing.
     """
-    if A < GEOMETRY_EPS:
+    if A <= GEOMETRY_EPS:
         if B < -GEOMETRY_EPS:
             return (C / B / 2.0, INF)
         elif B > GEOMETRY_EPS:
@@ -221,6 +235,14 @@ def get_collision_interval_vec(
     Note ``lower < upper`` is STRICT: if the solving interval is a single
     point, the function reports no collision.
     """
+    if dt1 == 0.0:
+        # Degenerate zero-length edge (self-loop or coincident
+        # endpoints). The C++ caller in
+        # ``problem_with_geometry.hpp:111-114`` has this guard
+        # before invoking the kernel; we add it at the kernel
+        # itself for robustness. The planner's behaviour for
+        # non-degenerate edges is unchanged.
+        return (False, 0.0, 0.0)
     ax = -(tp1.x - sp1.x) / dt1
     ay = -(tp1.y - sp1.y) / dt1
     bx = p0.x - sp1.x
@@ -393,6 +415,12 @@ def collision_check_moving(
         return False
     dt0 = tt0 - st0
     dt1 = tt1 - st1
+    # Degenerate zero-length edge: no collision (the C++ caller in
+    # ``problem_with_geometry.hpp:178-180`` has this guard for
+    # ``get_collision_interval`` 6-arg; the bare moving-vs-moving
+    # check has no guard, so we add it here for robustness).
+    if dt0 == 0.0 or dt1 == 0.0:
+        return False
     ax = (tp0.x - sp0.x) / dt0 - (tp1.x - sp1.x) / dt1
     bx = (sp0.x * tt0 - tp0.x * st0) / dt0 - (sp1.x * tt1 - tp1.x * st1) / dt1
     ay = (tp0.y - sp0.y) / dt0 - (tp1.y - sp1.y) / dt1
