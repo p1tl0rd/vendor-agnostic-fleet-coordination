@@ -34,7 +34,7 @@ io  ->  geometry  ->  roadmap  ->  ctc  ->  planners
 
 | Python module | Port from C++ (`PSIPP-CTC_src/src/`) | Difficulty / notes |
 |---|---|---|
-| `io/` | `base/input.hpp` (roadmap text format), `base/input_spatial.hpp` (continuous-space + MAPF_Benchmark grid/scenario formats), `base/load_problems.cpp` | **Hard contract.** `fscanf`/`printf` with `%030.15lf`. Literal `"stdin"`/`"stdout"` path sentinel. Note the known field-order asymmetry between `printTextFile` and `loadTextFile`. |
+| `io/` | `base/input.hpp` (roadmap text format), `base/load_problems.cpp`, then `base/input_spatial.hpp` (continuous-space + MAPF_Benchmark grid/scenario formats) and `base/spatial.hpp` in a **separate session (Stage 1b)** | **Hard contract.** `fscanf`/`printf` with `%030.15lf`. Literal `"stdin"`/`"stdout"` path sentinel. Note the known field-order asymmetry between `printTextFile` and `loadTextFile`. 1b is split out because `loadScenario` needs the geometry backend — see `docs/PORTING.md` §4. |
 | `geometry/` | `base/geometry_2D.hpp`, `base/geometry_2D_for_generator.hpp`, `base/collision_report.hpp` | **Hardest math.** Symbolic continuous-time collision algebra; `Buckets2D` spatial hash + `BentleyOttoman` sweep-line broad phase. Note `Geometry2D::EPS = 0` vs `ProblemInstance::EPS = 1e-8`. |
 | `roadmap/` | `roadmap_generators/{ProbabilisticRoadmap,ConstrainedTriangulation,Grid}.cpp`, `base/problem*.hpp`, `base/spatial.hpp` | kPRM and CDT (CGAL). CDT offsets obstacle rings inward by the agent radius. |
 | `ctc/` | `base/problem_with_explicit_collisions.hpp` (+ `problem_with_grid.hpp`, `problem_with_turning.hpp`) | The offline annotation stage. No dedicated C++ dir — it is a `ProblemInstance` subclass. Decide where it lives in Python. |

@@ -83,9 +83,9 @@ algorithm. Without it, the agent has nothing to load into.
 | Stage | Python module | C++ sources (lines) | Difficulty |
 |---|---|---|---|
 | 0 | `problem.py` (proposed) | `base/problem.hpp` (415), `base/problem_with_geometry.hpp` (305) | Easy — structure only |
-| 1 | `io/` | `base/input.hpp` (80), `base/load_problems.{cpp,hpp}` (79+23), `base/input_spatial.hpp` (198) | **Hard contract** |
+| 1 | `io/` | **1a:** `base/input.hpp` (80), `base/load_problems.{cpp,hpp}` (79+23) · **1b:** `base/input_spatial.hpp` (198), `base/spatial.hpp` (168) | **Hard contract** — 1b is split out because it depends on the geometry backend |
 | 2 | `geometry/` | `base/geometry_2D.hpp` (285), `base/collision_report.hpp` (293) | **Hardest math** |
-| 3 | `roadmap/` | `roadmap_generators/*.cpp` (239+116+124), `base/spatial.hpp` (168), `base/roadmap_generator.hpp` (22), `base/geometry_2D_for_generator.hpp` (194) | **Biggest unknown** — needs a CGAL/boost replacement |
+| 3 | `roadmap/` | `roadmap_generators/*.cpp` (239+116+124), `base/roadmap_generator.hpp` (22), `base/geometry_2D_for_generator.hpp` (194) | **Biggest unknown** — needs a CGAL/boost replacement |
 | 4 | `ctc/` | `base/problem_with_explicit_collisions.hpp` (287) | Medium — dense, but mechanical |
 | 5 | `planners/` | `planners/PrioritizedSIPP.{hpp,cpp}` (75+306), `base/planner.hpp` (20) | The thesis core |
 
@@ -155,8 +155,10 @@ edge-id convention that every downstream stage and the text format depend on.
 **Sources:** `base/input.hpp`, `base/load_problems.{cpp,hpp}`, `base/input_spatial.hpp`
 
 Split into two sessions — the roadmap text format first, the spatial/polygon format
-second. Do not attempt both at once; the spatial side drags in `.map`/`.scen` parsing
-and a boundary tracer.
+second. Do not attempt both at once; the spatial side drags in `.map`/`.scen` parsing,
+a boundary tracer, and a dependency on the geometry backend.
+
+### Stage 1a — roadmap text format
 
 ```
 Stage 1a. Read HANDOFF.md §3 and §8, docs/ARCHITECTURE.md §6.
@@ -184,6 +186,82 @@ pairs, and radius.
 
 Report all four done-checks from docs/PORTING.md §10 with raw output.
 ```
+
+### Stage 1b — spatial polygon format
+
+```
+Stage 1b. Read HANDOFF.md §3 and §8, docs/ARCHITECTURE.md §6.
+Load the cpp-to-python skill.
+
+Task: port the SPATIAL problem formats.
+Sources: PSIPP-CTC_src/src/base/input_spatial.hpp (198 lines) and the data model in
+PSIPP-CTC_src/src/base/spatial.hpp (168 lines, the SpatialProblemInstance class and its
+Task struct).
+
+Port these four, in this order:
+ 1. loadTextFile (input_spatial.hpp:15) — the continuous-space polygon format.
+ 2. loadMAPFBGrid (input_spatial.hpp:52) — octile .map grid -> free-cell grid.
+ 3. loadGripMap (input_spatial.hpp:106) — grid -> polygon rings, right-hand tracing.
+ 4. loadMAPFBScenario (input_spatial.hpp:163) — .scen task rows.
+
+DEFER loadScenario (input_spatial.hpp:184) to Stage 3. It calls isInside(), which needs
+the containment test and therefore the geometry backend. Do not invent a backend here.
+
+Represent the space as plain Python: outer = list[Point] (a closed ring, first point
+repeated at the end) and inners = list[list[Point]], one closed ring per hole. Do not
+implement containment, proximity, or bounds queries in this session — those belong to
+Stage 3 where Space2D lives.
+
+Preserve exactly:
+ - the "stdin" sentinel and fscanf tokenisation, same as Stage 1a
+ - rings are closed by repeating the first point (input_spatial.hpp:31, 39)
+ - loadMAPFBGrid keeps ONLY ONE connected component: it finds the first free cell in
+   top-to-bottom, left-to-right order and flood-fills from there. Free cells outside
+   that component become impassable (input_spatial.hpp:75-102).
+ - the grid is padded with one impassable border cell on every side
+ - free = '.', 'G', or 'S'; everything else is an obstacle
+ - loadGripMap traces boundaries with the right-hand rule and applies a -1 shift to
+   undo the padding (input_spatial.hpp:147, 154)
+ - the FIRST ring traced becomes the outer boundary; every later ring becomes a hole
+   (input_spatial.hpp:143). This is trace order, not geometric containment.
+ - loadScenario offsets each grid cell by +0.5 to reach the cell centre
+   (input_spatial.hpp:190, 192). Note the direction: -1 in loadGripMap, +0.5 in
+   loadScenario. Two different offsets, opposite signs.
+
+Tests: copy PSIPP-CTC_src/problem_instances/spatial/sample.txt and empty256.txt into
+problem_instances/spatial/. Cover ring closure, the hole count, the single-component
+flood fill on a map with an isolated free pocket, and the .scen row count.
+
+Report all four done-checks from docs/PORTING.md §10 with raw output.
+```
+
+### Trap: three different EPS values, not two
+
+| Constant | Value | Where |
+|---|---|---|
+| `Geometry2D::EPS` | `0` | `geometry_2D.hpp` |
+| `ProblemInstance::EPS` | `1e-8` | `problem.hpp:21` |
+| `SpatialProblemInstance::EPS` | `1e-6` | `spatial.hpp:26` |
+
+Three classes, three values. `isInside` shrinks the free space by
+`agent_geometry - EPS` (`spatial.hpp:29`), so `SpatialProblemInstance::EPS` is a
+clearance margin, not a comparison tolerance. Do not unify any of them.
+
+### Trap: `loadMAPFBGrid` silently discards part of the map
+
+It does not load the whole grid. It finds the first free cell in scan order and
+flood-fills, keeping only that one connected component (`input_spatial.hpp:80-102`).
+Every free cell outside the component becomes an obstacle. On a map with an isolated
+free pocket, the loaded map is smaller than the file. This is intentional — the planner
+cannot serve tasks in an unreachable region — but it must be ported, not "fixed".
+
+### Trap: `loadGripMap` decides outer vs hole by trace order
+
+The first boundary ring the tracer closes becomes the outer boundary; all subsequent
+rings become holes (`input_spatial.hpp:143-158`). It is not decided by area or
+containment. Since tracing starts from the first free cell in scan order, the outer
+boundary is found first — but only because of scan order. Do not replace this with a
+containment test.
 
 ### Trap: `printTextFile` is not the inverse of `loadTextFile`
 
@@ -271,15 +349,16 @@ at 1e-8 scale. Do not "clean it up".
 
 ### Trap: `Geometry2D::EPS = 0`
 
-Zero, while `ProblemInstance::EPS = 1e-8`. Two classes, two values, both load-bearing.
-If the agent proposes one shared `EPS`, reject it.
+Zero, while `ProblemInstance::EPS = 1e-8` and `SpatialProblemInstance::EPS = 1e-6`.
+Three classes, three values, all load-bearing. If the agent proposes one shared `EPS`,
+reject it. The spatial one is a clearance margin, not a comparison tolerance — see §4.
 
 ---
 
 ## 6. Stage 3 — roadmap
 
 **Sources:** `roadmap_generators/{ProbabilisticRoadmap,ConstrainedTriangulation,Grid}.cpp`,
-`base/spatial.hpp`, `base/roadmap_generator.hpp`, `base/geometry_2D_for_generator.hpp`
+`base/roadmap_generator.hpp`, `base/geometry_2D_for_generator.hpp`
 
 The biggest unknown: the reference depends on **CGAL** (ConstrainedTriangulation) and
 **boost::geometry** (`geometry_2D_for_generator.hpp` is pure boost geometry —
@@ -292,12 +371,25 @@ the numerical-divergence risk in the module docstring.
 Stage 3. Read HANDOFF.md §3-§5, docs/ARCHITECTURE.md §5 and §6.
 Load the cpp-to-python skill.
 
-Task: port roadmap generation.
+Task: choose the geometry backend, then port roadmap generation.
 Sources: PSIPP-CTC_src/src/roadmap_generators/ProbabilisticRoadmap.cpp (239 lines),
 ConstrainedTriangulation.cpp (116), Grid.cpp (124), base/roadmap_generator.hpp (22),
-base/spatial.hpp (168), base/geometry_2D_for_generator.hpp (194).
+base/geometry_2D_for_generator.hpp (194).
 
-Do the generators in this order: Grid, then ProbabilisticRoadmap, then
+The spatial data model (SpatialProblemInstance, its Task struct, and the text/map/scen
+loaders) was already ported in Stage 1b as plain Python. Do not rewrite it. This stage
+adds the geometry backend and the queries it enables:
+ - Space2D::checkVertexInside, checkEdgeInside (geometry_2D_for_generator.hpp:51,70)
+ - Space2D::getBound (:100), getRandomPoints (:114), getSepareteRandomPoints (:142),
+   calculateFreeVolume (:182)
+ - SpatialProblemInstance::isInside (spatial.hpp:29,33) and the loadScenario deferred
+   from Stage 1b (input_spatial.hpp:184)
+
+FIRST, before writing generator code: choose one Python geometry backend, write down
+why, and record the numerical-divergence risk in the module docstring. CGAL and
+boost::geometry are banned in src/psipp_ctc/. This decision blocks everything else here.
+
+Then do the generators in this order: Grid, then ProbabilisticRoadmap, then
 ConstrainedTriangulation. Grid has no external dependency; CDT needs the most work.
 
 Preserve exactly:
@@ -308,15 +400,14 @@ Preserve exactly:
  - both PRM variants append 2 start/goal vertices per task
  - CDT offsets every obstacle ring INWARD by the agent radius as a hard constraint,
    which is what makes every finite CDT edge collision-free for a disc
-
-CGAL and boost::geometry are banned in src/psipp_ctc/. Choose a Python geometry
-backend, write down why, and record the numerical-divergence risk at the divergence site.
+ - isInside tests with clearance agent_geometry - EPS (spatial.hpp:29), not a bare
+   containment test
 
 Tests: generate a roadmap for a small instance with each generator; assert the
 adjacency-list contract, the task-vertex count, and connectivity between every
 task's start and goal.
 
-Report all four done-checks with raw output.
+Report all four done-checks with raw output, and state the backend decision explicitly.
 ```
 
 ### Trap: kPRM's RNG is unseeded in the reference
@@ -509,7 +600,7 @@ Reject any of these as proof of completion:
 | 2 | Do not invent an `Edge` class — an edge id is an out-list index | `problem.hpp:28` |
 | 3 | `printTextFile` is driver-local and NOT the inverse of `loadTextFile` | `experiments/simplify_grid.cpp:9` vs `input_spatial.hpp:15` |
 | 4 | `fscanf` is whitespace-tokenised, not line-based | `input.hpp:22-41` |
-| 5 | Two different EPS constants in two classes | `Geometry2D::EPS=0`, `ProblemInstance::EPS=1e-8` |
+| 5 | **Three** different EPS constants in three classes | `Geometry2D::EPS=0`, `ProblemInstance::EPS=1e-8` (`problem.hpp:21`), `SpatialProblemInstance::EPS=1e-6` (`spatial.hpp:26`) |
 | 6 | Intervals are open and real-valued; boundary at 1e-8 is observable | `geometry_2D.hpp:134,164` |
 | 7 | kPRM RNG is unseeded → parity is plan validity, not bytes | `ProbabilisticRoadmap.cpp` |
 | 8 | kPRM `number_of_vertices=0` → only the `2*tasks` task vertices | `HANDOFF.md` §8 |
@@ -520,6 +611,10 @@ Reject any of these as proof of completion:
 | 13 | Global edge-index flattening is required before annotation | `problem_with_explicit_collisions.hpp:86` |
 | 14 | Reference configs do not run as shipped | `HANDOFF.md` §8 |
 | 15 | `ExtendedIncreasingCostTreeSearch` and `makeSpatialPlanner` are unreachable | `load_planners.cpp`, `load_problems.hpp:20` |
+| 16 | `loadMAPFBGrid` keeps only ONE connected component; the rest becomes obstacles | `input_spatial.hpp:75-102` |
+| 17 | `loadGripMap` decides outer vs hole by **trace order**, not containment | `input_spatial.hpp:143-158` |
+| 18 | Two opposite coordinate offsets: `-1` in `loadGripMap`, `+0.5` in `loadScenario` | `input_spatial.hpp:147,154` vs `:190,192` |
+| 19 | `isInside` shrinks free space by `agent_geometry - EPS`; it is clearance, not tolerance | `spatial.hpp:29,33` |
 
 ---
 
