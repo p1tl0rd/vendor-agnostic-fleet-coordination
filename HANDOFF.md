@@ -2,7 +2,7 @@
 
 **Read this first if you are a new agent (or a returning human) on this repo.**
 
-Last updated: 2026-10-16 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 done · 149 tests pass + 1 xfail (Berlin CDT parity)
+Last updated: 2026-10-16 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness done · 158 tests pass + 2 xfail (Berlin CDT parity — PSIPP and Benchmark.run)
 
 ---
 
@@ -19,7 +19,7 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port (FIFO priority, Euclidean heuristic, generation-counter stamps, monotone safe-interval scan, `check_plan_validity` event-sweep-style Cartesian-product gate). `ProblemInstanceWithExplicitCollisions::check_plan_validity` is the Stage 5 parity gate. 149 tests pass + 1 xfail (Berlin CDT heap-tie-break divergence, see §11) in ~90 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). | The deliverable. `planners` has PSIPP. |
+| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port. `benchmark.py` is the metrics harness + CSV producer (port of `base/benchmark.hpp`, spatial-only bits out of scope until item 4). 158 tests pass + 2 xfail (Berlin CDT parity — PSIPP and `Benchmark.run` both inherit the same root cause), in ~100 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). | The deliverable. `planners` has PSIPP. `benchmark.py` is the planner-metrics harness. |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC-src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
@@ -201,9 +201,11 @@ port session; this section is only the short form and follows `docs/PORTING.md` 
    reference on every stage-brief instance before the oracle is retired. Root cause and
    the correct fix are in the note at the end of this section. **The advice previously
    recorded here ("insertion order") was wrong and has been corrected.**
-2. **Port `base/benchmark.hpp` (433)** — the metrics harness. This is what turns the CLIs
-   into the reference's `planner_benchmark` / `roadmap_benchmark` and what produces the
-   benchmark CSV contract the thesis figures are built from.
+2. **Port `base/benchmark.hpp` (433)** ✅ done. `src/psipp_ctc/benchmark.py` carries
+   `RunPlanner`, `Benchmark`, `BenchmarkResult`, `get_used_memory_kb`,
+   `display_all_results`, and `run_incrementally_all_pairs` (the CSV producer).
+   `RunSpatialPlanner` and `RoadmapBenchmarkAll` stay out of scope until the spatial
+   planners are ported (item 4). 9 new tests in `tests/test_benchmark.py`.
 3. **Port the YAML config loaders and wire the two CLI stubs**
    (`base/load_problems.{cpp,hpp}`, `base/load_planners.{cpp,hpp}`,
    `base/load_generators.{cpp,hpp}`). `cli/planner_benchmark.py` and
