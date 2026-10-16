@@ -67,11 +67,15 @@ is ``(-up, -lo)``. This is the C++ lines 246-251 in
 ``problem_with_explicit_collisions.hpp``. Do NOT "fix" the signs
 (cpp-to-python skill rule 9).
 
-The ``v2e`` and ``e2e`` accessor lists also carry this convention:
+Only the ``ve`` accessor list carries the reverse-time convention:
 ``get_all_ve_collisions(v)`` returns ``(src_of_e, edge_id_of_e, -upper,
--lower)`` (relative entry times in the reverse direction), while
-``get_all_ee_collisions(v, eid)`` lists both directions for a pair
-(self entries appear once, non-self entries twice).
+-lower)``. The ``get_all_ee_collisions(v, eid)`` accessor returns the
+NATURAL-time interval ``(src_of_e, edge_id_of_e, lower, upper)`` -- the
+C++ ``ProblemInstance::getAllEECollisions`` (``problem.hpp:325-339``)
+calls the 5-arg ``getCollisionInterval`` which returns natural time and
+appends it directly without negation. The planner adds ``t_step`` to
+both endpoints as-is. ``get_all_ee_collisions`` lists BOTH directions
+for a non-self pair (self entries appear once).
 """
 
 from __future__ import annotations
@@ -84,7 +88,7 @@ from psipp_ctc.geometry.geometry_2d import (
     get_collision_interval_eec,
     get_collision_interval_vec,
 )
-from psipp_ctc.problem import ProblemInstanceWithGeometry
+from psipp_ctc.problem import Plan, ProblemInstanceWithGeometry
 
 
 # Type aliases for the three table value shapes.
@@ -346,9 +350,17 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
             )
             self.collisions_lists_e2v[eid].append((v, lo, up))
         # e2e -- the (e0, e1) pairs, both directions for non-self.
+        # The C++ ``getAllEECollisions`` returns ``(vertex_0, edge_id_0,
+        # lower, upper)`` in NATURAL time (no negation); the planner
+        # adds ``t_step`` to lower/upper directly. We mirror that: the
+        # canonical entry at eid0 carries ``(lo, up)`` and the
+        # reverse entry at eid1 also carries ``(lo, up)`` (no swap
+        # is needed -- eid1 is the other direction's vertex, and
+        # looking it up via ``getCollisionInterval(eid0, eid1)``
+        # already returned the natural-time interval).
         for (eid0, eid1), (lo, up) in self.collision_pairs_e2e.items():
             src1, _, edge_id1 = self.edge_data[eid1]
-            self.collisions_lists_e2e[eid0].append((src1, edge_id1, -up, -lo))
+            self.collisions_lists_e2e[eid0].append((src1, edge_id1, lo, up))
             if eid0 != eid1:
                 src0, _, edge_id0 = self.edge_data[eid0]
                 self.collisions_lists_e2e[eid1].append((src0, edge_id0, lo, up))
@@ -543,8 +555,148 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     def get_all_ee_collisions(
         self, v: int, edge_id: int
     ) -> List[_VEListEntry]:
-        """List of ``(other_src, other_edge_id, -upper, -lower)`` for
-        every EEC pair involving this edge, plus (for non-self pairs)
-        the reverse entry ``(self_src, self_edge_id, lower, upper)``.
+        """List of ``(other_src, other_edge_id, lower, upper)`` for
+        every EEC pair involving this edge, in NATURAL time (no
+        negation). Both directions are listed for non-self pairs;
+        self entries appear once. The planner adds ``t_step`` to
+        both endpoints to get the absolute blocked window.
         """
         return self.collisions_lists_e2e[self.edge_ids[v][edge_id]]
+
+    # ------------------------------------------------------------------
+    # check_plan_validity -- Stage 5 parity gate
+    # ------------------------------------------------------------------
+
+    def check_plan_validity(
+        self, plan: Plan
+    ) -> Tuple[float, float]:
+        """Verify a plan is collision-free and compute
+        ``(makespan, sum_of_costs)``.
+
+        Mirrors ``ProblemInstance::checkPlanValidity``
+        (``problem.hpp:341-407``) in its base-Cartesian-product
+        form. The geometry subclass overrides this with an
+        event-sweep variant in the C++ (``problem_with_geometry.hpp:207-292``);
+        the Python port keeps the base form for now -- the
+        N^2 x steps^2 loop is correct (the C++ asserts the
+        same) and the explicit-class kernels (table lookups in
+        Stage 4) keep the inner loop fast enough for parity
+        tests.
+
+        On a valid plan: returns ``(makespan, sum_of_costs)``
+        where ``makespan`` is the max per-agent cost and
+        ``sum_of_costs`` is the sum.
+
+        On an invalid plan: raises ``RuntimeError`` with the
+        same messages the C++ throws:
+
+        * ``"agent starts before reach start vertex"`` -- a
+          move's ``start_time`` is before the previous move's
+          end time minus EPS.
+        * ``"edge id is invalid"`` -- the move's ``edge_id``
+          is out of range for the agent's current vertex.
+        * ``"agent does not reach goal"`` -- the agent's
+          final position is not its goal.
+        * ``"collision occurs"`` -- the 8-arg
+          ``_collision_check_dispatch`` returns True for some
+          pair of (step0, step1).
+        """
+        n = len(plan)
+        if n != len(self.tasks):
+            raise ValueError(
+                f"plan has {n} agents but problem has {len(self.tasks)}"
+            )
+
+        # Reconstruct the C++'s ``routes`` and ``time_stamps``
+        # data structures from the plan. The C++ inserts a
+        # wait (vertex, -1) with the current time whenever
+        # ``start_time > current_time + EPS``; the resulting
+        # ``routes`` and ``time_stamps`` have
+        # ``time_stamps[i].size() == routes[i].size() + 1``
+        # (the extra trailing entry is the goal arrival).
+        routes: List[List[Tuple[int, int]]] = [[] for _ in range(n)]
+        time_stamps: List[List[float]] = [[] for _ in range(n)]
+        # ``agents`` is the task list. The C++ uses
+        # ``tasks[i % tasks.size()]`` (line 352) which means
+        # the task list is treated as a circular buffer if
+        # the plan has more agents than tasks. We replicate
+        # that behaviour exactly.
+        for i in range(n):
+            task = self.tasks[i % len(self.tasks)]
+            current_time = 0.0
+            current_vertex = task.initial_vertex
+            for move in plan[i]:
+                if move.start_time < current_time - self.EPS:
+                    raise RuntimeError(
+                        "agent starts before reach start vertex"
+                    )
+                if move.edge_id < 0:
+                    # Wait: stays at current_vertex; end time
+                    # is ``start_time`` (zero-length leg).
+                    if move.start_time > current_time + self.EPS:
+                        time_stamps[i].append(current_time)
+                        routes[i].append((current_vertex, -1))
+                    time_stamps[i].append(move.start_time)
+                    routes[i].append((current_vertex, move.edge_id))
+                    current_time = move.start_time
+                else:
+                    out_deg = self.get_out_degree(current_vertex)
+                    if move.edge_id >= out_deg:
+                        raise RuntimeError("edge id is invalid")
+                    target = self.get_target_vertex(current_vertex, move.edge_id)
+                    length = self.get_edge_length(current_vertex, move.edge_id)
+                    end_time = move.start_time + length
+                    if current_time + self.EPS < move.start_time:
+                        # Implicit wait between this edge and
+                        # the previous.
+                        time_stamps[i].append(current_time)
+                        routes[i].append((current_vertex, -1))
+                    time_stamps[i].append(move.start_time)
+                    routes[i].append((current_vertex, move.edge_id))
+                    current_vertex = target
+                    current_time = end_time
+            if current_vertex != task.goal_vertex:
+                raise RuntimeError("agent does not reach goal")
+            time_stamps[i].append(current_time)
+
+        # Collision check: O(n^2 * steps^2) Cartesian product
+        # over every (agent_i, step_0) x (agent_j, step_1)
+        # pair. The 8-arg ``_collision_check_dispatch`` is
+        # inherited from ``ProblemInstance`` and routes to
+        # the three concrete kernels (``collision_check_vv``,
+        # ``collision_check_ve``, ``collision_check_ee``) --
+        # all of which the explicit-collisions class has
+        # overridden with table lookups in Stage 4.
+        for i in range(n):
+            for step0 in range(len(routes[i])):
+                for j in range(i + 1, n):
+                    for step1 in range(len(routes[j])):
+                        collides = self._collision_check_dispatch(
+                            routes[i][step0][0],
+                            time_stamps[i][step0],
+                            routes[i][step0][1],
+                            time_stamps[i][step0 + 1],
+                            routes[j][step1][0],
+                            time_stamps[j][step1],
+                            routes[j][step1][1],
+                            time_stamps[j][step1 + 1],
+                        )
+                        if collides:
+                            raise RuntimeError(
+                                f"collision occurs: agent {i} step {step0} "
+                                f"(v={routes[i][step0][0]}, e={routes[i][step0][1]}, "
+                                f"t=[{time_stamps[i][step0]}, {time_stamps[i][step0+1]}]) "
+                                f"vs agent {j} step {step1} "
+                                f"(v={routes[j][step1][0]}, e={routes[j][step1][1]}, "
+                                f"t=[{time_stamps[j][step1]}, {time_stamps[j][step1+1]}])"
+                            )
+
+        # Compute makespan and sum_of_costs. The C++ uses the
+        # LAST entry of ``time_stamps[i]`` (the goal arrival).
+        makespan = 0.0
+        sum_of_costs = 0.0
+        for i in range(n):
+            cost = time_stamps[i][-1]
+            makespan = max(makespan, cost)
+            sum_of_costs += cost
+        return (makespan, sum_of_costs)
