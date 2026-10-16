@@ -546,19 +546,32 @@ invalid plan at 1e-8 scale.
 
 ## 9. After Stage 5
 
-Remaining work, in order:
+Stages 0–5 are done. Remaining work, in order (short form; the reasons and the
+Berlin-CDT root cause are in `HANDOFF.md` §11):
 
-1. **`base/benchmark.hpp` (433)** — port opportunistically. Metrics are means over
-   *successful* runs only; `ptime = used_time − used_time_for_collisions`;
-   `ctime = used_time_for_collisions`. CSV columns:
+1. **Close the Berlin CDT parity gap** — the only `xfail`. The reference's A* uses a
+   *loose* edge-window check, and `std::priority_queue` breaks `f_value` ties in
+   heap-array order while `heapq` breaks them by insertion order. Fix the heap, not the
+   loose check: mirror libstdc++'s `push_heap`/`pop_heap` comparing only `f_value`.
+2. **`base/benchmark.hpp` (433)** — the metrics harness, and the producer of the CSV
+   the thesis figures read. Metrics are means over *successful* runs only;
+   `ptime = used_time − used_time_for_collisions`; `ctime = used_time_for_collisions`.
+   CSV columns:
    `problem_name, planner_name, number_of_agents, perm_id, iteration, makespan, sum_of_costs, used_time`,
    with `-1.0` makespan as the failure sentinel.
-2. **CLIs** — `psipp-generate-roadmap < spatial_problem.txt > roadmap_problem.txt` and
-   `psipp-plan < roadmap_problem.txt > plan.txt`. Both stubs currently
-   `raise SystemExit("... not implemented yet")`.
-3. **Retire the oracle** — delete `PSIPP-CTC_src/` and remove the `/PSIPP-CTC_src/` line
-   from `.gitignore` **in the same commit** (`AGENTS.md`).
-4. **Then** the three improvement targets in `HANDOFF.md` §6. Not before: the port is
+3. **YAML config loaders + the two CLIs** — `base/load_problems.{cpp,hpp}`,
+   `base/load_planners.{cpp,hpp}`, `base/load_generators.{cpp,hpp}`. There is no YAML
+   config module in `src/psipp_ctc/` yet, and both CLI stubs still
+   `raise SystemExit("... not implemented yet")`. Targets:
+   `psipp-generate-roadmap < spatial_problem.txt > roadmap_problem.txt` and
+   `psipp-plan < roadmap_problem.txt > plan.txt`.
+4. **Decide the CCBS baseline strategy** — port `WrappedContinuousCBS2.cpp` (781), call
+   the vendored C++ solver as an external binary, or merge the vendored solver's CSVs.
+   The thesis's optimality-gap and success-rate figures need a CCBS side. Project
+   decision, not a port session.
+5. **Retire the oracle** — delete `PSIPP-CTC_src/` and remove the `/PSIPP-CTC_src/` line
+   from `.gitignore` **in the same commit** (`AGENTS.md`). Not before item 1 is closed.
+6. **Then** the three improvement targets in `HANDOFF.md` §6. Not before: the port is
    the baseline those changes are measured against.
 
 ---

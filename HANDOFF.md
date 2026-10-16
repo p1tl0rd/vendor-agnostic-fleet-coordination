@@ -194,25 +194,51 @@ Found while analyzing `PSIPP-CTC_src/config/*.yaml`:
 ## 11. Suggested next actions
 
 **The operational playbook for the port is `docs/PORTING.md`** — per-stage session
-briefs, the four-check verification gate, and a 15-row trap index. Use it to brief each
-port session; this section is only the short form.
+briefs, the four-check verification gate, and a 20-row trap index. Use it to brief each
+port session; this section is only the short form and follows `docs/PORTING.md` §9.
 
-1. **Stages 0+1a+1b+2+3+4+5 done.** PSIPP (Prioritized Safe-Interval Path Planning)
-   is ported and `check_plan_validity` runs against `ProblemInstanceWithExplicitCollisions`.
-   The full port order is `io -> geometry -> roadmap -> ctc -> planners` and is now complete
-   on the algorithmic side. **Open port items left:** `WrappedContinuousCBS2` and
-   `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). **Known parity
-   deviation on Berlin CDT** (100-agent, r=3.0): the Python port's A* explores a
-   slightly different edge from the C++ (5966, 4) vs (5966, 0) due to a heap tie-break
-   divergence between `heapq` and `std::priority_queue`, producing a plan whose agent-61
-   step collides with agent-1's step-39 at the EE kernel. The unit-test is `xfail`. A
-   strict edge-move-fits-safe-window check was tried; it made agent 50 unreachable
-   because the C++'s algorithm genuinely depends on the loose semantics. Fix: reproduce
-   the C++'s priority_queue tie-break exactly (insertion order without per-tuple
-   tie-break on `(vertex, iv)`); tracked as a Stage 5 follow-up.
-2. Then `geometry/` — the `getCollisionInterval` EEC kernel is the single most important
-   routine in the whole system; unit-test it against hand-computed intervals before building
-   anything on top. Reuse the reference's own property tests
-   (`PSIPP-CTC_src/src/test/geometry_2D_test.cpp`).
-3. Keep the reference available and re-run the Docker oracle after each stage.
-4. Do not delete `PSIPP-CTC_src/` until the port is verified.
+1. **Close the Berlin CDT parity gap** — the only `xfail`. The port must reproduce the
+   reference on every stage-brief instance before the oracle is retired. Root cause and
+   the correct fix are in the note at the end of this section. **The advice previously
+   recorded here ("insertion order") was wrong and has been corrected.**
+2. **Port `base/benchmark.hpp` (433)** — the metrics harness. This is what turns the CLIs
+   into the reference's `planner_benchmark` / `roadmap_benchmark` and what produces the
+   benchmark CSV contract the thesis figures are built from.
+3. **Port the YAML config loaders and wire the two CLI stubs**
+   (`base/load_problems.{cpp,hpp}`, `base/load_planners.{cpp,hpp}`,
+   `base/load_generators.{cpp,hpp}`). `cli/planner_benchmark.py` and
+   `cli/roadmap_generation.py` still `raise SystemExit("... not implemented yet")` and
+   there is no YAML config module in `src/psipp_ctc/` yet. These are the last `io/` pieces.
+4. **Decide the CCBS baseline strategy.** `WrappedContinuousCBS2.cpp` (781) is out of scope
+   for the core port, but the thesis needs a CCBS side for the optimality-gap and
+   success-rate figures. Three options: port the adapter, keep calling the vendored C++
+   solver as an external binary, or merge the vendored solver's CSVs directly. This is a
+   project decision, not a port session.
+5. **Retire the oracle** — delete `PSIPP-CTC_src/` and remove the `/PSIPP-CTC_src/` line
+   from `.gitignore` **in the same commit** (`AGENTS.md`). Not before item 1 is closed.
+6. **Then the three improvement targets** in §6. That is the thesis contribution; the port
+   is the baseline those changes are measured against.
+
+### The Berlin CDT parity deviation (item 1) — root cause
+
+Instance: `problem_instances/roadmaps/Berlin_1024_3_CDT.txt`, 100 agents, `r = 3.0`.
+The Python port's A* explores a different successor than the C++ ((5966, 4) vs (5966, 0)),
+and the resulting plan contains an EE collision that `check_plan_validity` rejects.
+
+Two separate facts, do not confuse them:
+
+- The reference's A* uses a **loose** edge-window check: it does not verify that a whole
+  edge traversal fits inside one safe window. A strict "move must fit fully inside the
+  window" check was tried during the port and made agent 50 unreachable — the C++ genuinely
+  depends on the loose semantics. **Do not "fix" the loose check.**
+- On ties in `f_value`, `std::priority_queue<Node, std::vector<Node>, cmp>` with
+  `cmp = [](a,b){ return a.f_value > b.f_value; }` (`PrioritizedSIPP.cpp:201-205`) walks a
+  **binary heap**, so ties pop in heap-array order, **not** insertion order. `heapq`'s
+  insertion-order tie-break is a different policy, and on this instance it is what steers
+  the A* into the loose check's hole.
+
+Correct fix: mirror libstdc++'s `std::push_heap` / `std::pop_heap` on a plain list,
+comparing **only** `f_value` — no `vertex`/`interval_id` tie-break fields in the key. That
+reproduces the oracle image's pop order exactly and keeps the algorithm unchanged.
+
+Do not delete `PSIPP-CTC_src/` until this is closed and the Docker oracle agrees.
