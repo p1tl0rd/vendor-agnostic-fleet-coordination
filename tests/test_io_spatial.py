@@ -1,10 +1,6 @@
-"""Tests for Stage 1b -- the SPATIAL problem formats.
+"""Tests for the SPATIAL problem formats.
 
-Port of:
-  PSIPP-CTC_src/src/base/input_spatial.hpp  (lines 14-50, 52-104, 106-161, 163-182)
-  PSIPP-CTC_src/src/base/spatial.hpp       (data members only)
-
-Coverage map (per PORTING.md §4 / brief):
+Coverage map:
   load_spatial_problem:
     - ring closure (first point repeated)
     - hole count
@@ -333,7 +329,7 @@ class TestLoadGripMap:
 
     def test_arena_agent_geometry_and_tasks_unset(self):
         """load_grip_map only sets the rings. agent_geometry and tasks
-        come from a .scen file in a separate load (Stage 3)."""
+        come from a .scen file in a separate load."""
         p = load_grip_map(str(ARENA))
         assert p.agent_geometry == 0.0
         assert p.tasks == []
@@ -485,20 +481,9 @@ class TestLoadMAPFBScenario:
 #   <ix> <iy>           |
 #   <gx> <gy>           |
 #
-# The reference files in ``problem_instances/spatial/`` were generated
-# with the docker command documented in the io/spatial.py module
-# docstring (build the print_spatial driver, run it against each input,
-# capture stdout). Regenerate with:
-#
-#   docker run --rm -v $PWD/PSIPP-CTC_src:/repo:ro
-#     -v /tmp/opencode:/work tunoob4ever/2psipp:latest bash -c '
-#       cd /app && g++ -std=c++14 -I src -I third_party/eigen
-#         /work/print_spatial.cpp -o /work/print_spatial
-#       /work/print_spatial text  /repo/problem_instances/spatial/sample.txt     > /work/sample_text_ref.txt
-#       /work/print_spatial text  /repo/problem_instances/spatial/empty256.txt   > /work/empty256_text_ref.txt
-#       /work/print_spatial grid  /repo/problem_instances/spatial/arena.map     > /work/arena_grid_ref.txt
-#       /work/print_spatial grip  /repo/problem_instances/spatial/arena.map     > /work/arena_grip_ref.txt
-#     '
+# The reference files in ``problem_instances/spatial/`` were
+# generated with the C++'s print_spatial driver built inside the
+# Docker image.
 #
 # Scen has no committed reference file because the reference ships no
 # .scen fixtures; the byte-parity check for scen is run ad-hoc (see the

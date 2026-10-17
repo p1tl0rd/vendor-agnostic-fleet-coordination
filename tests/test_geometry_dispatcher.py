@@ -1,20 +1,17 @@
 """Tests for the geometry-kernel dispatchers on ProblemInstance.
 
 Exercises the VEC, EE, and VV kernels via ``ProblemInstanceWithGeometry``
-(the class that ships with a 2D coordinate array and a disc radius) and
-verifies that the dispatchers produce the same answers as the standalone
-kernels in :mod:`psipp_ctc.geometry.geometry_2d`.
+(the class that ships with a 2D coordinate array and a disc radius)
+and verifies that the dispatchers produce the same answers as the
+standalone kernels in :mod:`psipp_ctc.geometry.geometry_2d`.
 
-The C++ version of these tests is implicit: ``PrioritizedSIPP`` exercises
-the dispatchers end-to-end, and the C++ property test on the kernels
-exercises the kernels standalone. The Python port keeps them split
-because the kernels are Stage 2 algebra and the dispatchers are Stage 2
-plumbing -- it is easier to verify them independently.
+The Python port keeps the kernels and the dispatchers split because
+it is easier to verify them independently.
 
-Trap reminder (Stage 0 trap 1): ``set_number_of_vertex`` on the
-geometry subclass resizes BOTH ``coordinates`` AND ``edges``. Calling
-it after building the edges clears them. The fixtures below build the
-edges only after the final resize.
+Trap reminder: ``set_number_of_vertex`` on the geometry subclass
+resizes BOTH ``coordinates`` AND ``edges``. Calling it after
+building the edges clears them. The fixtures below build the edges
+only after the final resize.
 """
 
 from __future__ import annotations

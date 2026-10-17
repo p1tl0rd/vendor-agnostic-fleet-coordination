@@ -1,4 +1,4 @@
-"""Stage 2 -- the geometry module.
+"""The geometry module.
 
 The continuous-time collision algebra (:mod:`.geometry_2d`) and the
 broad-phase candidate generators (:mod:`.collision_report`). Both

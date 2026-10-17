@@ -1,6 +1,7 @@
-"""Stage 3 -- roadmap generator tests.
+"""Roadmap generator tests.
 
-The verification gate is per PORTING.md §6 and the brief:
+The verification gate is the per-generator test plan in
+``docs/PORTING.md``:
   - the adjacency-list contract (edges[v] is a list of target ids)
   - the task-vertex count (number_of_vertices + 2 * tasks, with kPRM
     number_of_vertices=0 special case)

@@ -1,12 +1,9 @@
-"""Stage 2 -- broad-phase collision candidates.
+"""Broad-phase collision candidate generation.
 
-Port of
-  PSIPP-CTC_src/src/base/collision_report.hpp  (293 lines)
-
-This is the candidate-generation step for the offline annotation stage.
-It does NOT compute the exact interval -- it produces *pairs* that the
-CTC kernels (VEC / EEC, in :mod:`psipp_ctc.geometry.geometry_2d`) then
-evaluate. Two structures:
+The candidate-generation step for the offline annotation. It does NOT
+compute the exact interval -- it produces *pairs* that the CTC kernels
+(VEC / EEC, in :mod:`psipp_ctc.geometry.geometry_2d`) then evaluate.
+Two structures:
 
 * :class:`Buckets2D` -- a uniform spatial hash with cell size equal to
   the conflict radius. Used for VV candidates and VE candidates (every
@@ -32,10 +29,9 @@ Preserve exactly
   ``slope_1``, then smaller ``segment - segment_1``).
 * The random rotation in ``BentleyOttoman.__init__``: segments are
   rotated by a uniform random angle in ``[-pi, pi]`` so no segment is
-  vertical. The rotation uses an unseeded ``std::random_device`` in the
-  reference, so cross-pair detection is not bit-reproducible run to
-  run (PORTING.md trap 7, rule 14). Tests compare structural properties
-  (number of crossings, who crosses), not coordinates.
+  vertical. The rotation uses an unseeded RNG, so cross-pair detection
+  is not bit-reproducible run to run. Tests compare structural
+  properties (number of crossings, who crosses), not coordinates.
 * ``BentleyOttoman.EPS = 1e-11`` (its own internal tolerance, distinct
   from the geometry module's ``EPS = 0``).
 """
@@ -51,13 +47,12 @@ from psipp_ctc.problem import Point
 
 
 # ---------------------------------------------------------------------------
-# Buckets2D (collision_report.hpp:11-113)
+# Buckets2D
 # ---------------------------------------------------------------------------
 
 
 # Fixed neighbour offsets for ``calculateAllPairs``. Picked so each
-# unordered pair of adjacent cells is visited exactly once. The C++ has
-# the same constant at line 26.
+# unordered pair of adjacent cells is visited exactly once.
 _BUCKET_NEIGHBOUR_OFFSETS: Tuple[Tuple[int, int], ...] = (
     (0, 0),
     (0, 1),
@@ -70,9 +65,8 @@ _BUCKET_NEIGHBOUR_OFFSETS: Tuple[Tuple[int, int], ...] = (
 class Buckets2D:
     """Uniform spatial hash for VV and VE candidates.
 
-    Mirrors ``class Buckets2D`` (``collision_report.hpp:11-113``). The
-    cell size is the conflict radius, so two points within ``2r`` of
-    each other must share a bucket or sit in one of the 5 fixed
+    The cell size is the conflict radius, so two points within ``2r``
+    of each other must share a bucket or sit in one of the 5 fixed
     neighbour offsets.
 
     Two queries:
@@ -105,8 +99,7 @@ class Buckets2D:
     def calculate_all_pairs(self) -> Set[Tuple[int, int]]:
         """All unordered point pairs with distance < ``radius``.
 
-        Mirrors ``Buckets2D::calculateAllPairs`` (lines 28-51). Each
-        pair is emitted once (via the 5 fixed offsets and the
+        Each pair is emitted once (via the 5 fixed offsets and the
         ``min/max`` ordering of ids).
         """
         pairs: Set[Tuple[int, int]] = set()
@@ -131,7 +124,6 @@ class Buckets2D:
     ) -> List[int]:
         """All point ids within ``radius`` of the open segment ``s -> t``.
 
-        Mirrors ``Buckets2D::calculateCollisionVertices`` (lines 52-112).
         The 4-corner rectangle is the convex hull of the four points
         ``p0 ± u`` and ``p1 ± u`` where ``u`` is the unit perpendicular
         scaled by ``radius``. The function walks the bucket grid
@@ -212,7 +204,7 @@ class Buckets2D:
 
 
 # ---------------------------------------------------------------------------
-# BentleyOttoman sweep (collision_report.hpp:115-293)
+# BentleyOttoman sweep
 # ---------------------------------------------------------------------------
 
 
@@ -223,9 +215,8 @@ _PI = 2.0 * math.asin(1.0)
 class _Event:
     """One entry in the sweep-line priority queue.
 
-    Mirrors the C++ ``Event`` struct (lines 128-150). The strict
-    ``<`` is preserved by storing the fields needed to reproduce
-    the tiebreak order: time, then type (emerge > vanish > cross),
+    The strict ``<`` is preserved by storing the fields needed to
+    reproduce the tiebreak order: time, then type (emerge > vanish > cross),
     then ``slope_0``, then ``slope_1``, then ``segment - segment_1``.
     """
 
@@ -282,7 +273,6 @@ class _Event:
 class BentleyOttoman:
     """Bentley-Ottmann sweep for crossing segments.
 
-    Mirrors ``class BentleyOttoman`` (``collision_report.hpp:115-293``).
     Detects every pair of segments that geometrically cross. The sweep
     is random-rotation-based: segments are rotated by a uniform random
     angle ``[-pi, pi]`` so no segment is vertical, then swept in ``x``
@@ -378,7 +368,6 @@ class BentleyOttoman:
     def calculate_all_crosses(self) -> Set[Tuple[int, int]]:
         """All unordered segment pairs that geometrically cross.
 
-        Mirrors ``BentleyOttoman::calculateAllCrosses`` (lines 205-292).
         Emits emerge/vanish events for every non-vertical segment, then
         drains the priority queue.
 

@@ -1,12 +1,8 @@
-"""Stage 1a -- the ROADMAP text format.
+"""The ROADMAP text format used by ``psipp-plan``.
 
-Port of
-  PSIPP-CTC_src/src/base/input.hpp  (lines 12-45: constructor, lines 47-79: print)
-
-This is the format that ``psipp-plan`` reads and that the planner harness
-serialises. It is a token-based text format -- whitespace (space, tab,
-newline) is one delimiter, newlines are NOT structural. The reference uses
-``fscanf``; the port splits the file on whitespace and consumes tokens in
+A token-based text format -- whitespace (space, tab, newline) is one
+delimiter, newlines are NOT structural. ``fscanf`` would read it the same
+way; the Python port splits the file on whitespace and consumes tokens in
 order, which is equivalent because ``fscanf`` skips whitespace between
 conversions.
 
@@ -29,25 +25,22 @@ Format (whitespace-tokenised):
 
 Edges are bucketed into the source vertex's out-list in declaration order
 via ``ProblemInstance.add_edge``. An edge's identity is its ``(source,
-out-list-index)`` pair; order of insertion IS the edge id (HANDOFF.md §5,
-PORTING.md §3 trap 2).
+out-list-index)`` pair; order of insertion IS the edge id.
 
 Path sentinels
 --------------
 The literal strings ``"stdin"`` and ``"stdout"`` are special-cased to mean
-the process standard streams, mirroring ``input.hpp:16`` and ``input.hpp:51``.
-This is a C convention that survives the port because the planner CLI shells
-the data through stdin/stdout, and external tools (Docker, pipes) need the
-literal path "stdin" to be addressable as a filename.
+the process standard streams. This is a C convention that survives the
+port because the planner CLI shells the data through stdin/stdout, and
+external tools (Docker, pipes) need the literal path "stdin" to be
+addressable as a filename.
 
 Float formatting
 ----------------
 Coordinates and the agent radius are written with ``%030.15lf`` (width 30,
 zero-padded, 15 digits after the decimal point). In Python that is
-``f"{x:030.15f}"``. Width 30 is the C ``printf`` width and must be preserved
-exactly so a ``diff`` against the reference's output is empty for the same
-input instance. (Sample width 30 chosen so the line is always a fixed length
--- useful for some downstream tools, not for us.)
+``f"{x:030.15f}"``. Width 30 must be preserved exactly so a round-trip
+through the loader and the printer is bit-exact for the same instance.
 
 Preserve exactly
 ----------------
@@ -83,15 +76,12 @@ PathLike = Union[str, "object"]  # PathLike: str or os.PathLike
 def _open_for_read(path: Union[str, PathLike]) -> Iterator[IO[str]]:
     """Resolve the path sentinel and yield a readable text stream.
 
-    The literal ``"stdin"`` is the only sentinel for input; the reference's
-    ``input.hpp:16`` checks ``file_path == "stdin"``. Anything else opens as
-    a normal file.
+    The literal ``"stdin"`` is the only sentinel for input. Anything else
+    opens as a normal file.
 
-    Sentinel streams are **not closed** on exit: the C++ reference explicitly
-    skips ``fclose`` on the standard streams (``input.hpp:42-44``), and
-    closing ``sys.stdin`` / ``sys.stdout`` is a process-wide side effect that
-    would break the rest of the program -- including pytest's own capture
-    machinery.
+    Sentinel streams are **not closed** on exit: closing ``sys.stdin`` /
+    ``sys.stdout`` is a process-wide side effect that would break the rest
+    of the program -- including pytest's own capture machinery.
     """
     if str(path) == "stdin":
         yield sys.stdin
@@ -104,9 +94,8 @@ def _open_for_read(path: Union[str, PathLike]) -> Iterator[IO[str]]:
 def _open_for_write(path: Union[str, PathLike]) -> Iterator[IO[str]]:
     """Resolve the path sentinel and yield a writable text stream.
 
-    The literal ``"stdout"`` is the only sentinel for output; the reference's
-    ``input.hpp:51`` checks ``file_path == "stdout"``. Anything else opens as
-    a normal file in write mode.
+    The literal ``"stdout"`` is the only sentinel for output. Anything
+    else opens as a normal file in write mode.
 
     Same as ``_open_for_read``: sentinel streams are not closed on exit.
     """
@@ -120,15 +109,13 @@ def _open_for_write(path: Union[str, PathLike]) -> Iterator[IO[str]]:
 def load_roadmap_problem(path: Union[str, PathLike]) -> ProblemInstanceWithGeometry:
     """Read a roadmap problem file and return a populated geometry instance.
 
-    The C++ side is the ``ProblemInstanceWithGeometry<Geometry2D>``
-    constructor specialisation at ``input.hpp:12-45``. Returns ``None`` on
-    open failure in C++; we raise :class:`OSError` / :class:`ValueError`
-    instead -- the brief (PORTING.md §10) requires exceptions where the C++
-    would silently produce a broken instance.
+    Returns ``None`` on open failure in C++; we raise
+    :class:`OSError` / :class:`ValueError` instead -- the
+    thesis-port brief requires exceptions where the C++ would
+    silently produce a broken instance.
 
     Tokenisation: ``str.split()`` on the full file content. This matches
-    ``fscanf`` whitespace-skipping semantics for ``%d`` and ``%lf`` conversions
-    (PORTING.md §4 trap 4).
+    ``fscanf`` whitespace-skipping semantics for ``%d`` and ``%lf`` conversions.
     """
     with _open_for_read(path) as f:
         # ``split()`` with no args splits on any run of whitespace, including
@@ -219,9 +206,8 @@ def print_roadmap_problem(
 ) -> None:
     """Serialise a roadmap problem to a file (or stdout).
 
-    Mirrors the ``ProblemInstanceWithGeometry<Geometry2D>::print``
-    specialisation at ``input.hpp:47-79``. Field order is identical to the
-    reader so a round-trip is exact for the same instance.
+    Field order is identical to the reader so a round-trip is exact
+    for the same instance.
 
     Float formatting is ``%030.15f``: width 30, zero-padded on the left,
     15 digits after the decimal point. For ``0.0`` the result is

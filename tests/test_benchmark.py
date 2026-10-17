@@ -1,6 +1,6 @@
-"""Stage 5-follow-up -- tests for psipp_ctc.benchmark.
+"""Tests for psipp_ctc.benchmark.
 
-The Python benchmark must mirror ``base/benchmark.hpp``. These tests
+The Python benchmark is the planner-metrics harness. These tests
 construct an in-memory problem instance + PSIPP planner, run them through
 ``RunPlanner`` and ``Benchmark``, and assert the metric contract:
 
@@ -39,7 +39,7 @@ from psipp_ctc.planners import PrioritizedSIPP
 
 @pytest.fixture
 def sample_problem():
-    """Load the small ``sample.txt`` roadmap problem from Stage 5 tests."""
+    """Load the small ``sample.txt`` roadmap problem."""
     workspace = Path("/home/two/PSIPP-CTC")
     return load_roadmap_problem(workspace / "problem_instances/roadmaps/sample.txt")
 

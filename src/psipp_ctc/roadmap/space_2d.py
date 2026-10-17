@@ -1,11 +1,7 @@
-"""Stage 3 -- the geometry backend for roadmap generation.
+"""The geometry backend for roadmap generation.
 
-Port of
-  PSIPP-CTC_src/src/base/geometry_2D_for_generator.hpp  (Space2D, 194 lines)
-  PSIPP-CTC_src/src/base/spatial.hpp                  (SpatialProblemInstance, 168 lines)
-
-This module wraps the Python geometry backend and exposes the same six
-operations the C++ reference uses during roadmap generation:
+This module wraps the Python geometry backend (shapely + scipy) and
+exposes the six operations the generators use:
 
   - check_vertex_inside(space, point, agent_geometry) -- point-in-polygon
     with a clearance margin
@@ -54,8 +50,8 @@ Numerical divergence risk (recorded here per the brief)
   "every task's start and goal are connected in the output graph",
   not byte equality. See ``tests/test_roadmap_*.py``.
 
-Three EPS values, three classes (PORTING.md §4 trap 5)
------------------------------------------------------
+Three EPS values, three classes
+-------------------------------
   Geometry2D::EPS         = 0       (this module, collision tolerance)
   ProblemInstance::EPS    = 1e-8    (problem.py, data-model tolerance)
   SpatialProblemInstance::EPS = 1e-6  (problem.py, clearance margin used
@@ -114,12 +110,12 @@ def _make_polygon(outer: List[Point], inners: List[List[Point]]) -> Polygon:
 
 
 # ---------------------------------------------------------------------------
-# Space2D -- the six operations (mirror geometry_2D_for_generator.hpp:51-191)
+# Space2D -- the six operations
 # ---------------------------------------------------------------------------
 
 
 def check_vertex_inside(space: Polygon, point, agent_geometry: float) -> bool:
-    """Mirror of Space2D::checkVertexInside (geometry_2D_for_generator.hpp:51-68).
+    """Point-in-polygon with a clearance margin.
 
     Returns True iff ``point`` lies strictly inside ``space`` AND a disc of
     radius ``agent_geometry`` centred at ``point`` does not cross any
@@ -143,7 +139,7 @@ def check_vertex_inside(space: Polygon, point, agent_geometry: float) -> bool:
 
 
 def check_edge_inside(space: Polygon, p0, p1, agent_geometry: float) -> bool:
-    """Mirror of Space2D::checkEdgeInside (geometry_2D_for_generator.hpp:70-98).
+    """Disc travels along the segment, stays inside the space.
 
     Returns True iff a disc of radius ``agent_geometry`` can travel along
     the segment from ``p0`` to ``p1`` without crossing any boundary.
@@ -205,7 +201,7 @@ def check_edge_inside(space: Polygon, p0, p1, agent_geometry: float) -> bool:
 
 
 def get_bound(space: Polygon, axis: int) -> Tuple[float, float]:
-    """Mirror of Space2D::getBound (geometry_2D_for_generator.hpp:100-112).
+    """Outer-ring bounding box on one axis.
 
     Returns ``(min, max)`` of the outer-ring coordinate along ``axis``
     (0 = x, 1 = y). The C++ skips the first vertex of the outer ring
@@ -231,15 +227,12 @@ def get_bound(space: Polygon, axis: int) -> Tuple[float, float]:
 def get_random_points(
     space: Polygon, agent_geometry: float, number: int
 ) -> List[Point]:
-    """Mirror of Space2D::getRandomPoints (geometry_2D_for_generator.hpp:114-141).
+    """Uniform rejection sampling of points in the free space.
 
-    Rejection sampling: pick (x, y) uniformly in the BBox minus a
-    ``agent_geometry`` margin on every side, accept iff
-    ``check_vertex_inside`` is True. The C++ uses
-    ``std::random_device + std::default_random_engine`` (unseeded);
-    Python uses the stdlib ``random`` module with no seed set, also
-    unseeded. Two runs of either reference produce different samples
-    (PORTING.md §6 trap 7).
+    Pick (x, y) uniformly in the BBox minus a ``agent_geometry`` margin
+    on every side, accept iff ``check_vertex_inside`` is True. The
+    Python ``random`` module is unseeded, so two runs produce different
+    samples.
     """
     (min_x, max_x), (min_y, max_y) = get_bound(space, 0), get_bound(space, 1)
     lo_x = min_x + agent_geometry
@@ -289,7 +282,7 @@ def get_separate_random_points(
 
 
 def calculate_free_volume(space: Polygon, agent_geometry: float) -> float:
-    """Mirror of Space2D::calculateFreeVolume (geometry_2D_for_generator.hpp:182-191).
+    """Free area available to a disc of radius ``agent_geometry``.
 
     The free area available to a disc of radius ``agent_geometry`` to
     move inside ``space`` -- the polygon's area minus a strip of width

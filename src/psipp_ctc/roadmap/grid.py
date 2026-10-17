@@ -1,7 +1,4 @@
-"""Stage 3 -- the Grid roadmap generator.
-
-Port of
-  PSIPP-CTC_src/src/roadmap_generators/Grid.cpp  (124 lines)
+"""The Grid roadmap generator.
 
 A uniform 2D grid is laid across the BBox of the outer ring; the cell
 centres inside the free polygon become vertices, and a symmetric edge
@@ -22,11 +19,9 @@ sweep), so the adjacency list has each undirected edge present in
 both directions in the out-lists of the two endpoints. The Python port
 mirrors this.
 
-K is the connectivity parameter from the C++. ``K=4`` gives the
-4-connected grid (cardinal neighbours). The C++ allows ``K=8`` for the
-8-connected grid, but Stage 3 only needs ``K=4`` to keep the tests
-simple; K=8 support is a documented extension (the neighbours list is
-precomputed in the constructor for any K).
+K is the connectivity parameter. ``K=4`` gives the 4-connected grid
+(cardinal neighbours). ``K=8`` is supported (the neighbours list is
+precomputed for any K) but the default is K=4.
 """
 
 from __future__ import annotations
@@ -44,18 +39,18 @@ from psipp_ctc.roadmap.space_2d import (
 
 # Default connectivity for the Grid generator. K=4 gives the 4-connected
 # lattice (cardinal neighbours). The C++ constructor allows K=8 too;
-# Stage 3 defaults to K=4 to keep test instances small.
+# Default to 4-connectivity (cardinal neighbours only).
 DEFAULT_K: int = 4
 
 
 def _build_neighbour_offsets(K: int) -> List[Tuple[int, int]]:
-    """Precompute the K-neighbour lattice offsets used by the C++.
+    """Precompute the K-neighbour lattice offsets.
 
-    Mirrors ``Grid.cpp:17-33``: start with the four cardinal offsets,
-    then for each step from 3 to K, interleave every adjacent pair and
-    also add the diagonal between them. For K=4 this is just the four
-    cardinal offsets. For K=8 it adds the four diagonals at step K=3
-    (which become a single new pair interleaved between the cardinals).
+    Start with the four cardinal offsets, then for each step from 3 to
+    K, interleave every adjacent pair and also add the diagonal between
+    them. For K=4 this is just the four cardinal offsets. For K=8 it
+    adds the four diagonals at step K=3 (which become a single new pair
+    interleaved between the cardinals).
     """
     neighbours: List[Tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]
     for k in range(3, K + 1):
@@ -78,8 +73,7 @@ def generate_grid(
 ) -> ProblemInstanceWithGeometry:
     """Generate a Grid roadmap for ``spatial``.
 
-    Mirrors ``GridGenerator::generate`` (Grid.cpp:36-123). Returns a
-    fresh ``ProblemInstanceWithGeometry`` whose vertices are:
+    Returns a fresh ``ProblemInstanceWithGeometry`` whose vertices are:
 
     * one vertex per grid cell whose centre is inside the free polygon
       (with ``agent_geometry - EPS`` clearance);
@@ -123,7 +117,8 @@ def generate_grid(
             if spatial.is_inside(p):
                 v_id = problem.get_number_of_vertices()
                 vertex_ids[(i, j)] = v_id
-                # Resize coordinates + edges together (Stage 0 trap 1)
+                # Resize coordinates + edges together (the
+                # geometry-subclass ``set_number_of_vertex`` trap).
                 problem.coordinates.append(p)
                 problem.edges.append([])
 

@@ -1,8 +1,4 @@
-"""Stage 5 -- Prioritized Safe-Interval Path Planning (PSIPP).
-
-Port of
-  PSIPP-CTC_src/src/planners/PrioritizedSIPP.hpp  (75 lines)
-  PSIPP-CTC_src/src/planners/PrioritizedSIPP.cpp (306 lines)
+"""Prioritized Safe-Interval Path Planning (PSIPP).
 
 The planner assigns agents an order (priority 0, 1, 2, ...), and for
 each agent runs an A* over the (vertex, safe-interval) state space.
@@ -11,15 +7,17 @@ The previous agent's planned route is converted into a set of
 edge safe windows, and the A* skips any (state, edge) pair whose
 target interval collides with the next agent's route.
 
-The C++ exposes three inner structs -- ``Interval`` (no id, edge
-feasibility gate), ``IntervalWithID`` (id, A* state), and
-``SafeIntervalData`` (per-interval A* bookkeeping) -- and a few
-helpers. We translate them to plain dataclasses / ``@dataclass``
-here; the ``bisect`` and ``heapq`` modules replace ``std::set`` and
-``std::priority_queue``.
+The three inner data structures are:
 
-Algorithm invariants (preserved verbatim from HANDOFF.md §5)
-------------------------------------------------------------
+* ``Interval`` (no id, edge feasibility gate),
+* ``IntervalWithID`` (id, A* state),
+* ``SafeIntervalData`` (per-interval A* bookkeeping).
+
+The ``bisect`` and ``heapq`` modules back the start-sorted interval
+lists and the priority queue.
+
+Algorithm invariants
+--------------------
 1. **Generation counter.** ``open_listed`` and ``close_listed`` use
    ``priority_order`` directly as a stamp. There is deliberately no
    per-agent clearing; once an interval has been touched in some
@@ -43,25 +41,22 @@ Algorithm invariants (preserved verbatim from HANDOFF.md §5)
    std::get<2>(collision)`` to mean ``t_step - upper`` (i.e. the
    blocked window opens *before* the moving agent's window opens).
    Do NOT "fix" it (cpp-to-python skill rule 9).
-7. **Global edge indices.** The annotation constructor (Stage 4)
-   flattens the adjacency list to global edge indices. The planner
-   works in per-vertex ``edge_id`` and the accessors translate via
-   the explicit instance's ``edge_ids`` and ``edge_data``.
+7. **Global edge indices.** The annotation constructor flattens the
+   adjacency list to global edge indices. The planner works in
+   per-vertex ``edge_id`` and the accessors translate via the
+   explicit instance's ``edge_ids`` and ``edge_data``.
 
-What is NOT in this port
-------------------------
-* The full A*'s reverse-time mirroring of the EEC time frame
-  (problem.hpp:233-254). The Python ``get_collision_interval``
-  6-arg form (Stage 2 + Stage 4) does the mirror at the kernel
-  layer; the planner just consumes the resolved ``(lo, up)`` from
-  the explicit-collisions accessors.
-* Multi-threaded execution. The C++ uses
-  ``std::chrono::system_clock::now()`` for the time limit; the
-  Python port uses ``time.monotonic()`` for the same effect.
-* The ``priority_strategy == 1`` shuffle path. The reference
-  hardcodes ``0`` (FIFO) in ``load_planners.cpp:24``. We expose
-  the constructor argument for completeness but the tests only
-  exercise ``0``.
+Out of scope
+------------
+* The full A*'s reverse-time mirroring of the EEC time frame. The
+  Python ``get_collision_interval`` 6-arg form does the mirror at
+  the kernel layer; the planner just consumes the resolved
+  ``(lo, up)`` from the explicit-collisions accessors.
+* Multi-threaded execution. ``time.monotonic`` provides the same
+  wall-clock-budget semantics as ``std::chrono::system_clock``.
+* The ``priority_strategy == 1`` shuffle path. The constructor
+  accepts the argument for completeness but the default is FIFO
+  (the only path the C++ uses).
 """
 
 from __future__ import annotations
@@ -98,12 +93,11 @@ _INF = math.inf
 class IntervalWithID:
     """A vertex safe interval -- an A* state.
 
-    Mirrors ``PrioritizedSIPP::IntervalWithID``. The ``operator<`` in
-    the C++ compares ``start`` only, so two intervals with the same
-    ``start`` but different ``end`` / ``id`` are ordered arbitrarily
-    (in practice the C++ ``std::set`` would treat them as equal and
-    drop duplicates). The Python port uses the same ordering: a
-    ``bisect.insort``-maintained list keyed on ``start``.
+    Two intervals with the same ``start`` but different ``end`` / ``id``
+    are ordered arbitrarily in a ``bisect.insort``-maintained list
+    keyed on ``start``; the planner uses ``start`` alone to locate
+    the candidate safe interval, so the arbitrary order does not
+    matter.
 
     Fields
     ------
@@ -136,11 +130,9 @@ class IntervalWithID:
 class Interval:
     """An edge blocked window -- a feasibility gate, NOT an A* state.
 
-    Mirrors ``PrioritizedSIPP::Interval``. Same ``__lt__`` on
-    ``start`` only. The C++ does not need an ``id`` here because
-    the edge's A* bookkeeping is keyed by the *target* vertex's
-    ``IntervalWithID.id``; the edge blocked windows are
-    intermediate, read-only data during the scan.
+    No ``id`` field because the edge's A* bookkeeping is keyed by
+    the *target* vertex's ``IntervalWithID.id``; the edge blocked
+    windows are intermediate, read-only data during the scan.
     """
 
     start: float
@@ -154,11 +146,10 @@ class Interval:
 class SafeIntervalData:
     """Per-interval A* bookkeeping.
 
-    Mirrors ``PrioritizedSIPP::SafeIntervalData``. The fields
-    ``open_listed`` and ``close_listed`` carry the **generation
-    counter** -- a copy of ``priority_order`` from the round that
-    last touched this interval. ``-1`` is the sentinel for "never
-    touched" (the C++ default initialiser).
+    The fields ``open_listed`` and ``close_listed`` carry the
+    **generation counter** -- a copy of ``priority_order`` from the
+    round that last touched this interval. ``-1`` is the sentinel
+    for "never touched".
     """
 
     open_listed: int = -1
@@ -173,13 +164,11 @@ class SafeIntervalData:
 class CurrentState:
     """Per-(vertex, out-edge) monotone scan state.
 
-    Mirrors ``PrioritizedSIPP::CurrentState``. The C++ keeps two
-    iterators (``edge_it`` into ``edge_safes[v][e]`` and
-    ``target_it`` into ``vertex_safes[target]``); the Python port
-    keeps them as integer indices into the same lists. Indices are
-    valid as long as the lists don't mutate, and they don't
-    mutate during A* (blocked windows are added only between
-    rounds, not while A* is running).
+    Two integer indices (one into ``edge_safes[v][e]``, one into
+    ``vertex_safes[target]``). Indices stay valid as long as the
+    underlying lists do not mutate; they do not mutate during A*
+    (blocked windows are added only between rounds, not while A*
+    is running).
     """
 
     visited: int = -1
@@ -227,13 +216,12 @@ def add_vertex_collision_interval(
     """Subtract ``[start, end]`` from a sorted, disjoint list of
     vertex safe intervals.
 
-    Mirrors ``PrioritizedSIPP::addVertexCollisionInterval``
-    (``PrioritizedSIPP.cpp:10-40``). The contract:
+    The contract:
 
     * ``safes`` is sorted by ``start`` and disjoint.
-    * ``counter[0]`` is the next unused interval id; this
-      function mints a new one ONLY when a single interval is
-      split into two.
+    * ``counter[0]`` is the next unused interval id; this function
+      mints a new one ONLY when a single interval is split into
+      two.
     * In-place: ``safes`` is mutated.
 
     The three cases (in order):
@@ -301,10 +289,9 @@ def add_edge_collision_interval(
     """Subtract ``[start, end]`` from a sorted, disjoint list of
     edge blocked windows.
 
-    Mirrors ``PrioritizedSIPP::addEdgeCollisionInterval``
-    (``PrioritizedSIPP.cpp:42-71``). Same algorithm as
-    ``add_vertex_collision_interval`` minus the id field -- edge
-    blocked windows have no id because they are not A* states.
+    Same algorithm as ``add_vertex_collision_interval`` minus the
+    id field -- edge blocked windows have no id because they are
+    not A* states.
     """
     idx = bisect.bisect_left(safes, Interval(start - eps))
 
@@ -407,11 +394,7 @@ class PrioritizedSIPP(Planner):
 
     def _heuristic_distance(self, v0: int, v1: int) -> float:
         """Euclidean distance. Admissible only because edge length ==
-        travel time (unit speed). See HANDOFF.md §5 invariant #4.
-
-        Mirrors ``PrioritizedSIPP::heuristic_distance``
-        (``PrioritizedSIPP.cpp:73-81``).
-        """
+        travel time (unit speed)."""
         assert self.problem is not None
         dx = self.problem.get_coordinate_x(v0) - self.problem.get_coordinate_x(v1)
         dy = self.problem.get_coordinate_y(v0) - self.problem.get_coordinate_y(v1)
@@ -422,20 +405,16 @@ class PrioritizedSIPP(Planner):
     def solve(self) -> None:
         """Run the planner.
 
-        Mirrors ``PrioritizedSIPP::solve`` (``PrioritizedSIPP.cpp:83-306``).
         On any abort condition (time limit, unreachable goal),
         ``self._success`` is set to ``False`` and the call returns
-        without raising -- the same contract as the C++. The caller
-        inspects ``succeeded()`` afterwards.
+        without raising. The caller inspects ``succeeded()``
+        afterwards.
 
         The plan, if successful, is one ``list[Move]`` per agent
         in agent-index order. Each ``Move.edge_id`` is the
-        per-vertex out-list index (negative = wait). The plan is
-        legal (the C++ asserts ``checkPlanValidity`` succeeds at
-        the end of each ``solve`` for the C++ tests; we don't
-        assert but provide the same ``check_plan_validity``
-        method on the explicit-collisions instance so callers can
-        verify externally).
+        per-vertex out-list index (negative = wait). The plan can
+        be validated via ``check_plan_validity`` on the
+        explicit-collisions instance.
         """
         assert self.problem is not None, (
             "PrioritizedSIPP.solve called before set_instance"
@@ -545,8 +524,7 @@ class PrioritizedSIPP(Planner):
             # ``priority_queue`` stable behaviour.
             heap: List[_HeapItem] = []
             # Monotonic counter for the ``insertion_order``
-            # tie-breaker. Mirrors the C++ ``priority_queue``
-            # behaviour: items pushed earlier come out first on
+            # tie-breaker. Items pushed earlier come out first on
             # ties. Reset to 0 at the start of every priority
             # round so the count does not overflow across rounds.
             self._heap_counter: int = 0
@@ -615,10 +593,8 @@ class PrioritizedSIPP(Planner):
         """Materialise the previous agent's route as a set of
         blocked windows on the current agent's safe intervals.
 
-        Mirrors the body of ``PrioritizedSIPP::solve`` at
-        ``PrioritizedSIPP.cpp:138-184``. Only the IMMEDIATELY
-        previous agent (priorities[priority_order - 1]) is added
-        this round -- invariant #8.
+        Only the IMMEDIATELY previous agent
+        (``priorities[priority_order - 1]``) is added this round.
 
         The route is a sequence of ``(vertex, edge_id)`` steps
         (edge_id == -1 means waiting). For each step, the
@@ -680,8 +656,8 @@ class PrioritizedSIPP(Planner):
                 # j was moving on (vertex, edge_id). Two
                 # accessor lists: EV (vertex-blocked) and EE
                 # (edge-blocked). Both are in NATURAL time
-                # (the EE return convention was fixed in
-                # Stage 4).
+                # (the EE return convention was fixed when the
+                # explicit-collisions subclass was written).
                 ev_list = self.problem.get_all_ev_collisions(vertex, edge_id)
                 for (other_vertex, lo, up) in ev_list:
                     collision_start = t_step + lo
@@ -731,14 +707,12 @@ class PrioritizedSIPP(Planner):
         safe interval. Returns True on success, False if the
         goal interval is unreachable.
 
-        Mirrors the A* body of ``PrioritizedSIPP::solve``
-        (``PrioritizedSIPP.cpp:209-266``). The generation-counter
-        invariant is here: ``open_listed`` and ``close_listed``
-        carry a COPY of ``priority_order``, and the
-        ``close_listed == priority_order`` test at the top of
-        the loop means "skip an interval that was already closed
-        in THIS round" -- not "closed ever". Earlier rounds
-        left a different stamp and are treated as fresh.
+        The generation-counter invariant is here: ``open_listed``
+        and ``close_listed`` carry a COPY of ``priority_order``,
+        and the ``close_listed == priority_order`` test at the
+        top of the loop means "skip an interval that was already
+        closed in THIS round" -- not "closed ever". Earlier
+        rounds left a different stamp and are treated as fresh.
 
         Returns
         -------
@@ -910,14 +884,11 @@ class PrioritizedSIPP(Planner):
         predecessor's arrival (the agent had to wait out a
         conflict before departing on the next edge).
 
-        Mirrors the body of ``PrioritizedSIPP::solve`` at
-        ``PrioritizedSIPP.cpp:271-296``.
-
-        Note on the trailing sentinel: the C++ pushes
-        ``(goal_vertex, -1)`` to ``routes[agent]`` and ``INF``
-        then ``best_time[goal_id]`` to ``time_stamps[agent]``
-        (lines 272-274). The INF arrival at the end is what
-        makes ``time_stamps[agent].size() == routes[agent].size() + 1``
+        Note on the trailing sentinel: ``(goal_vertex, -1)`` is
+        pushed to ``routes[agent]`` and ``INF`` then
+        ``best_time[goal_id]`` to ``time_stamps[agent]``. The
+        INF arrival at the end is what makes
+        ``time_stamps[agent].size() == routes[agent].size() + 1``
         -- the ``add_previous_agent_conflicts`` loop relies on
         that invariant to find ``t_next`` for the last step.
         """

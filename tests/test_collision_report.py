@@ -1,6 +1,7 @@
-"""Tests for the Stage 2 broad-phase candidate generators.
+"""Tests for the broad-phase candidate generators.
 
-Mirrors portions of the C++ usage in ``problem_with_explicit_collisions.hpp``:
+Verifies the candidate pairs that feed the VEC / EEC kernels in
+``ctc/``.
 - ``Buckets2D::calculateAllPairs`` is used to precompute ``collision_pairs_v2v``,
   the set of vertex pairs within ``2r`` (the broad-phase filter for the
   offline VV annotation).

@@ -1,84 +1,67 @@
-"""Stage 1b -- the SPATIAL problem formats.
+"""The SPATIAL problem formats: a hand-written continuous-space polygon
+format, MAPF_Benchmark ``.map`` files (octile grids and right-hand
+boundary traces), and ``.scen`` task rows.
 
-Port of
-  PSIPP-CTC_src/src/base/input_spatial.hpp  (lines 14-50, 52-104, 106-161, 163-182)
-  PSIPP-CTC_src/src/base/spatial.hpp       (the SpatialProblemInstance data
-                                            members, lines 11-26)
+Four loaders, in the order they appear in the reference header:
 
-Four functions, ported in the order they appear in ``input_spatial.hpp``:
-
-1. ``load_spatial_problem(path)``  -- the hand-written continuous-space
-   polygon format. ``input_spatial.hpp:15-50`` (a template specialisation
-   of ``SpatialProblemInstance<Space2D>::loadTextFile``).
-2. ``load_mapfb_grid(path)``       -- octile ``.map`` grid -> a padded
+1. ``load_spatial_problem(path)`` -- the hand-written continuous-space
+   polygon format.
+2. ``load_mapfb_grid(path)`` -- octile ``.map`` grid -> a padded
    free-cell grid with a single connected component.
-   ``input_spatial.hpp:52-104``.
-3. ``load_grip_map(path)``         -- ``.map`` -> ``SpatialProblemInstance``
-   with outer + inner polygon rings via right-hand boundary tracing.
-   ``input_spatial.hpp:106-161`` (a template specialisation of
-   ``SpatialProblemInstance<Space2D>::loadGripMap``).
-4. ``load_mapfb_scenario(path)``   -- ``.scen`` task rows.
-   ``input_spatial.hpp:163-182`` (a free function).
+3. ``load_grip_map(path)`` -- ``.map`` -> ``SpatialProblemInstance`` with
+   outer + inner polygon rings via right-hand boundary tracing.
+4. ``load_mapfb_scenario(path)`` -- ``.scen`` task rows.
 
-``loadScenario`` (``input_spatial.hpp:184-197``) is **deferred to Stage 3**
-because it calls ``isInside()``, which needs the Space2D backend. This
-session deliberately does not invent a backend.
+A fifth loader, ``load_scenario``, takes a ``SpatialProblemInstance``
+plus a ``.scen`` path and appends the tasks in place. It uses the
+``is_inside`` point query, so the geometry backend must be available.
 
 Data model
 ----------
-The space is represented as plain Python lists, exactly as the brief
-specifies:
+The space is represented as plain Python lists:
 
-* ``outer`` -- ``list[Point]``, a closed ring (first point repeated at the
-  end). Built by ``load_spatial_problem`` from the file's outer vertices,
-  or by ``load_grip_map`` from the right-hand trace.
-* ``inners`` -- ``list[list[Point]]``, one closed ring per hole. Order is
-  the trace order, NOT geometric containment -- the first ring traced
-  becomes the outer boundary, every later ring becomes a hole
-  (``input_spatial.hpp:143-158``).
+* ``outer`` -- ``list[Point]``, a closed ring (first point repeated at
+  the end). Built by ``load_spatial_problem`` from the file's outer
+  vertices, or by ``load_grip_map`` from the right-hand trace.
+* ``inners`` -- ``list[list[Point]]``, one closed ring per hole. Order
+  is the trace order, NOT geometric containment -- the first ring
+  traced becomes the outer boundary, every later ring becomes a hole.
 
-Containment, proximity and bounds queries are NOT implemented here; they
-live in Stage 3 where ``Space2D`` is ported.
+Containment, proximity and bounds queries use the lazy shapely-polygon
+backend on ``SpatialProblemInstance``.
 
 Preserve exactly
 ----------------
-* ``"stdin"`` sentinel and ``fscanf`` tokenisation, same as Stage 1a
-  (``input_spatial.hpp:18``, ``spatial.hpp:18``). Whitespace is a single
-  delimiter, newlines are not structural.
-* Rings are closed by repeating the first point (``input_spatial.hpp:31,
-  39, 149, 156``).
+* ``"stdin"`` sentinel and ``fscanf`` tokenisation. Whitespace is a
+  single delimiter, newlines are not structural.
+* Rings are closed by repeating the first point.
 * ``load_mapfb_grid`` keeps only ONE connected component. The first free
   cell in scan order (top-to-bottom, left-to-right) is the seed of a
-  BFS flood fill; everything else becomes impassable
-  (``input_spatial.hpp:75-102``). This is intentional -- the planner
-  cannot serve tasks in an unreachable region -- and is not a bug to
-  "fix".
-* The grid is padded with one impassable border cell on every side, so a
-  ``H x W`` file becomes a ``(H+2) x (W+2)`` array
-  (``input_spatial.hpp:59-62``).
+  BFS flood fill; everything else becomes impassable. This is
+  intentional -- the planner cannot serve tasks in an unreachable
+  region -- and is not a bug to "fix".
+* The grid is padded with one impassable border cell on every side, so
+  a ``H x W`` file becomes a ``(H+2) x (W+2)`` array.
 * Free cell chars are ``'.'``, ``'G'``, ``'S'``; everything else is an
-  obstacle (``input_spatial.hpp:67``).
+  obstacle.
 * ``load_grip_map`` traces boundaries with the right-hand rule and
-  applies a -1 shift to undo the padding (``input_spatial.hpp:147, 154``)
-  -- opposite sign from ``loadScenario``'s +0.5 cell-centre offset
-  (``input_spatial.hpp:190, 192``). The two different offsets are not a
-  bug; they are two different coordinate frames.
+  applies a -1 shift to undo the padding -- opposite sign from
+  ``load_scenario``'s +0.5 cell-centre offset. The two different
+  offsets are not a bug; they are two different coordinate frames.
 * The first ring traced becomes the outer boundary, every later ring
-  becomes a hole (``input_spatial.hpp:143-158``). This is trace order,
-  not geometric containment. The outer comes first only because the
-  outer is found first in scan order; do not replace this with a
-  containment test.
+  becomes a hole. This is trace order, not geometric containment. The
+  outer comes first only because the outer is found first in scan
+  order; do not replace this with a containment test.
 
 Known asymmetry
 ---------------
-``printTextFile`` (in ``experiments/simplify_grid.cpp:9-33``) is NOT the
-inverse of ``loadTextFile`` -- the agent count sits in a different
-position in the stream (``input_spatial.hpp:24`` vs
-``simplify_grid.cpp:11-16``). This is a reference quirk. We do NOT port
-``printTextFile`` because it is driver-local to ``simplify_grid`` and no
-other code path uses its output format. If you ever need to round-trip a
-spatial problem, you must write the file by hand to match the
-``loadTextFile`` format.
+``print_text_file`` in the C++ reference's ``simplify_grid`` driver is
+NOT the inverse of ``load_text_file`` -- the agent count sits in a
+different position in the stream. We do not implement the printer
+because it is driver-local to ``simplify_grid`` and no other code path
+uses its output format. If you ever need to round-trip a spatial
+problem, you must write the file by hand to match the
+``load_spatial_problem`` format.
 """
 
 from __future__ import annotations
@@ -123,9 +106,6 @@ def _open_for_read(path: Union[str, PathLike]) -> Iterator[IO[str]]:
 def load_spatial_problem(path: Union[str, PathLike]) -> SpatialProblemInstance:
     """Read a continuous-space polygon problem.
 
-    Port of ``SpatialProblemInstance<Space2D>::loadTextFile``
-    (``input_spatial.hpp:14-50``).
-
     Format (whitespace-tokenised, ``fscanf``-style):
 
         number_of_holes number_of_agents
@@ -142,13 +122,13 @@ def load_spatial_problem(path: Union[str, PathLike]) -> SpatialProblemInstance:
         [per agent:]
           ix iy gx gy  (four doubles)
 
-    Rings are closed by appending the first point to the end
-    (``input_spatial.hpp:31, 39``). The outer ring's first point is taken
-    BEFORE the holes are read; the closing duplicate of each inner ring is
-    taken at the end of that ring's section, matching the C++ exactly.
+    Rings are closed by appending the first point to the end. The outer
+    ring's first point is taken BEFORE the holes are read; the closing
+    duplicate of each inner ring is taken at the end of that ring's
+    section, matching the C++ exactly.
 
     Returns a populated :class:`SpatialProblemInstance`. The four geometry
-    methods on it are ``NotImplementedError`` until Stage 3.
+    methods on it use the lazy shapely-polygon backend.
     """
     with _open_for_read(path) as f:
         tokens = iter(f.read().split())
@@ -187,10 +167,9 @@ def load_spatial_problem(path: Union[str, PathLike]) -> SpatialProblemInstance:
         _read_point(tokens) for _ in range(number_of_outer_vertices)
     ]
     if number_of_outer_vertices > 0:
-        # Close the ring by repeating the first point. Reference:
-        # ``input_spatial.hpp:31``. If the ring is empty (a degenerate
-        # case), we leave it empty -- the brief does not require
-        # duplication of an empty ring.
+        # Close the ring by repeating the first point. If the ring is
+        # empty (a degenerate case), we leave it empty -- the brief
+        # does not require duplication of an empty ring.
         outer.append(outer[0])
 
     # -- Holes ------------------------------------------------------------
@@ -233,23 +212,18 @@ def load_spatial_problem(path: Union[str, PathLike]) -> SpatialProblemInstance:
 def load_mapfb_grid(path: Union[str, PathLike]) -> List[List[bool]]:
     """Read an octile ``.map`` file and return a padded free-cell grid.
 
-    Port of the free function ``loadMAPFBGrid``
-    (``input_spatial.hpp:52-104``).
-
     The result is a ``(H+2) x (W+2)`` boolean grid: ``True`` for free
     cells (the char was ``'.'``, ``'G'``, or ``'S'``), ``False`` for
     obstacles and the impassable border. The border pad is one cell wide
-    on every side (``input_spatial.hpp:59-62``); the original map cells
-    sit at index ``[1..H] x [1..W]``.
+    on every side; the original map cells sit at index ``[1..H] x [1..W]``.
 
     Single connected component
     -------------------------
     Only the free region containing the first free cell in scan order
     (top-to-bottom, left-to-right) is kept. Every other free region is
-    turned into obstacles. This is intentional and matches the C++
-    ``assert(start_y <= height)`` (``input_spatial.hpp:86``) -- the
-    reference raises an assertion failure on a fully-obstructed map.
-    The Python port raises :class:`ValueError` instead.
+    turned into obstacles. This is intentional -- the planner cannot
+    serve tasks in an unreachable region. A fully-obstructed map
+    raises :class:`ValueError`.
 
     Returns
     -------
@@ -386,28 +360,24 @@ def load_mapfb_grid(path: Union[str, PathLike]) -> List[List[bool]]:
 def load_grip_map(path: Union[str, PathLike]) -> SpatialProblemInstance:
     """Read a ``.map`` and trace its boundaries as polygon rings.
 
-    Port of ``SpatialProblemInstance<Space2D>::loadGripMap``
-    (``input_spatial.hpp:106-161``).
-
     The function calls :func:`load_mapfb_grid` first to get the padded
     free-cell grid, then runs a right-hand wall-following tracer on every
     "left edge" of a free region (a free cell whose west neighbour is
     blocked) in scan order. The first ring traced becomes ``outer``;
     every later ring becomes an ``inner`` (hole). This is **trace order,
-    not geometric containment** -- see PORTING.md §4 trap 17.
+    not geometric containment**.
 
-    Each ring is closed by appending the first point to the end
-    (``input_spatial.hpp:149, 156``). The ``-1`` shift applied to every
-    coordinate (``input_spatial.hpp:147, 154``) undoes the grid's
+    Each ring is closed by appending the first point to the end. The
+    ``-1`` shift applied to every coordinate undoes the grid's
     one-cell padding, so the result lives in the original ``.map``
-    coordinate frame. The sign is opposite to ``loadScenario``'s
-    ``+0.5`` cell-centre offset (``input_spatial.hpp:190, 192``) -- two
-    different coordinate frames, not a bug.
+    coordinate frame. The sign is opposite to ``load_scenario``'s
+    ``+0.5`` cell-centre offset -- two different coordinate frames, not
+    a bug.
 
     Returns a :class:`SpatialProblemInstance` with ``outer`` and
     ``inners`` populated. ``agent_geometry`` is ``0.0`` (unset) and
-    ``tasks`` is empty -- those come from a separate ``.scen`` file in
-    Stage 3, via :func:`load_spatial_problem` later.
+    ``tasks`` is empty -- those come from a separate ``.scen`` file
+    via :func:`load_scenario`.
     """
     grid = load_mapfb_grid(path)
     height = len(grid) - 2
@@ -423,14 +393,13 @@ def load_grip_map(path: Union[str, PathLike]) -> SpatialProblemInstance:
     ]
     found_outer = False
 
-    # Direction encoding: 0=right, 1=bottom, 2=left, 3=top. Same as
-    # ``input_spatial.hpp:115-117``.
+    # Direction encoding: 0=right, 1=bottom, 2=left, 3=top.
     dx = (1, 0, -1, 0)
     dy = (0, 1, 0, -1)
     # ``sx, sy`` are the cell offsets for "diagonally front-left" and
     # "front" of the current position in a given direction; they are
     # NOT the offsets to the left cell. The exact geometric meaning is
-    # in the C++; we copy the arrays verbatim.
+    # the right-hand rule; we copy the arrays verbatim.
     sx = (0, -1, -1, 0)
     sy = (0, 0, -1, -1)
 
@@ -440,14 +409,13 @@ def load_grip_map(path: Union[str, PathLike]) -> SpatialProblemInstance:
         for start_x in range(1, width + 1):
             # Start-of-trace condition: cell to the west is blocked, this
             # cell is free, and this cell is not yet visited.
-            # ``input_spatial.hpp:120-122``.
             west_blocked = not grid[start_y][start_x - 1]
             here_free = grid[start_y][start_x]
             if not (west_blocked and here_free) or visited[start_y][start_x]:
                 continue
 
             # Right-hand wall-following. The starting direction is
-            # always 1 (bottom), matching ``input_spatial.hpp:127``.
+            # always 1 (bottom).
             xs: List[int] = []
             ys: List[int] = []
             x, y = start_x, start_y
@@ -473,8 +441,8 @@ def load_grip_map(path: Union[str, PathLike]) -> SpatialProblemInstance:
                 # to turn left, turn right, or continue. The negation
                 # matters: ``!grid[front-left]`` means blocked, so we
                 # turn LEFT when front-left is blocked (counterintuitive
-                # but it is what the C++ does and what
-                # ``checkRoadspaceValidity`` will verify).
+                # but it is what the right-hand rule does and what
+                # ``check_roadspace_validity`` will verify).
                 if not grid[y + sy[ldir]][x + sx[ldir]]:
                     xs.append(x)
                     ys.append(y)
@@ -485,9 +453,8 @@ def load_grip_map(path: Union[str, PathLike]) -> SpatialProblemInstance:
                     direction = rdir
                 # Else: continue forward (no record, no turn).
 
-            # Apply the -1 shift (``input_spatial.hpp:147, 154``) to
-            # undo the grid padding. The point type is the same 2D
-            # ``Point`` used everywhere else.
+            # Apply the -1 shift to undo the grid padding. The point
+            # type is the same 2D ``Point`` used everywhere else.
             ring = [Point(x - 1, y - 1) for x, y in zip(xs, ys)]
             if ring:
                 ring.append(ring[0])
@@ -517,9 +484,6 @@ def load_mapfb_scenario(
 ) -> List[Tuple[int, int, int, int]]:
     """Read a MAPF-Benchmark ``.scen`` file and return task rows.
 
-    Port of the free function ``loadMAPFBScenario``
-    (``input_spatial.hpp:163-182``).
-
     The C++ scans with ``fscanf("%d%999s%d%d%d%d%d%d%lf", ...)`` until
     EOF, which silently consumes the leading ``version 1`` line as well
     as every task row. The 999-char map-name field is discarded; the
@@ -532,8 +496,7 @@ def load_mapfb_scenario(
     list of tuple of (int, int, int, int)
         Each tuple is ``(start_x, start_y, goal_x, goal_y)`` in the
         original ``.map`` grid coordinates. The cell-centre offset
-        ``+0.5`` (input_spatial.hpp:190, 192) is NOT applied here -- it
-        is part of ``loadScenario``, which is deferred to Stage 3.
+        ``+0.5`` is NOT applied here -- it is part of ``load_scenario``.
     """
     tasks: List[Tuple[int, int, int, int]] = []
     with open(path, "r", encoding="utf-8") as f:
@@ -541,13 +504,12 @@ def load_mapfb_scenario(
             line = line.strip()
             if not line or line.startswith("version"):
                 continue
-            # The C++ skips whitespace before the first int; here we
-            # split on any whitespace, which is the same effect.
+            # We split on any whitespace, which matches the C++'s
+            # fscanf's "skip whitespace" behaviour.
             parts = line.split()
-            # The reference format has 9 fields: bucket, map_name, width,
-            # height, start_x, start_y, goal_x, goal_y, length. We
-            # require the 9 to keep the loader strict; a malformed row
-            # raises.
+            # The format has 9 fields: bucket, map_name, width, height,
+            # start_x, start_y, goal_x, goal_y, length. We require the
+            # 9 to keep the loader strict; a malformed row raises.
             if len(parts) != 9:
                 raise ValueError(
                     f"scenario row has {len(parts)} fields, want 9: "
@@ -572,18 +534,16 @@ def load_scenario(
     path: Union[str, PathLike],
     spatial: SpatialProblemInstance,
 ) -> None:
-    """Append tasks from a ``.scen`` file to ``spatial`` (Stage 3).
+    """Append tasks from a ``.scen`` file to ``spatial`` in place.
 
-    Port of ``SpatialProblemInstance<Space2D>::loadScenario``
-    (``input_spatial.hpp:184-197``). For each task row, applies the
-    ``+0.5`` cell-centre offset, checks both endpoints via
-    ``spatial.is_inside``, and appends a ``SpatialTask`` iff both
-    pass. Tasks whose endpoints fall outside the (cleared) free
-    space are dropped (matching the C++ silently).
+    For each task row, applies the ``+0.5`` cell-centre offset, checks
+    both endpoints via ``spatial.is_inside``, and appends a
+    ``SpatialTask`` iff both pass. Tasks whose endpoints fall outside
+    the (cleared) free space are dropped silently.
 
     The ``+0.5`` offset here and the ``-1`` offset in
-    :func:`load_grip_map` are the two opposite signs called out in
-    PORTING.md §4 trap 18.
+    :func:`load_grip_map` are two opposite signs for two different
+    coordinate frames; this is intentional.
     """
     from psipp_ctc.problem import SpatialTask
     for start_x, start_y, goal_x, goal_y in load_mapfb_scenario(path):

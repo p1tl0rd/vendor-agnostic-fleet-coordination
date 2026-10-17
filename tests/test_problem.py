@@ -1,4 +1,4 @@
-"""Stage 0 -- data model tests.
+"""Data model tests.
 
 Covers the three items the brief calls out:
   1. Edge id IS the out-list index (``add_edge`` appends).

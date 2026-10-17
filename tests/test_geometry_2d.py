@@ -1,6 +1,6 @@
-"""Property tests for the Stage 2 geometry kernels.
+"""Property tests for the geometry kernels.
 
-Ports the three randomised property-test families from
+Three randomised property-test families:
 ``PSIPP-CTC_src/src/test/geometry_2D_test.cpp`` (152 lines). The
 reference uses ``std::random_device`` (unseeded) and samples 10000
 random cases per family. The Python port uses numpy with a fresh

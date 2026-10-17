@@ -1,20 +1,20 @@
-"""Stage 5-follow-up -- merge PSIPP / CCBS benchmark CSVs.
+"""Merge PSIPP / CCBS benchmark CSVs.
 
-The C++ reference and the Python port both emit the same 8-column
-CSV via ``Benchmark::runIncrementallyAllPairs`` /
-``Benchmark.run_incrementally_all_pairs``:
+The C++ reference's ``planning_incrementally`` driver and the
+Python's ``Benchmark.run_incrementally_all_pairs`` both emit the
+same 8-column CSV:
 
     <problem_name>,<planner_name>,<number_of_agents>,<perm_id>,<count>,
     <makespan>,<sum_of_costs>,<used_time>
 
-with the C++'s ``printf("%11s,%6s,%4d,%4d,%4d,%10.3lf,%10.3lf,%10d\\n")``
-format. There is no header line in either output.
+with the ``%11s,%6s,%4d,%4d,%4d,%10.3lf,%10.3lf,%10d`` format. There
+is no header line in either output.
 
-This module provides a tiny concat-and-validate merger so the thesis
-author can run the C++ reference's ``planning_incrementally`` driver
-to obtain the CCBS CSV and the Python's ``Benchmark.run_incrementally_all_pairs``
-to obtain the PSIPP CSV, then merge them into a single dataset for
-the figures:
+This module provides a tiny concat-and-validate merger so the
+thesis author can run the C++'s ``planning_incrementally`` driver
+to obtain the CCBS CSV and the Python's
+``Benchmark.run_incrementally_all_pairs`` to obtain the PSIPP CSV,
+then merge them into a single dataset for the figures:
 
     psipp-merge-csv python_psipp.csv ccbs_results.csv > merged.csv
 
@@ -29,15 +29,13 @@ Not the responsibility of this module
 --------------------------------------
 * Generating the CSVs themselves. Use the Python's
   ``Benchmark.run_incrementally_all_pairs`` (or the wired CLI driver)
-  for the PSIPP side; the C++ reference's
-  ``experiments/planning_incrementally`` driver for the CCBS side.
+  for the PSIPP side; the C++'s ``planning_incrementally`` driver
+  for the CCBS side.
 * Statistics / figure plotting. The merged CSV is a tidy long-format
   dataset; ``pandas.read_csv`` + ``matplotlib`` (or R) are downstream.
 * Per-instance text normalisation. The Continuous-CBS
-  ``main.cpp``'s free-form text output is **not** a CSV; if the
-  thesis author has that, it needs a per-instance converter (HANDOFF
-  §11 item 4 stays "done" with this merger; the text normaliser is
-  out of scope for option 3).
+  ``main.cpp``'s free-form text output is not a CSV; if the thesis
+  author has that, it needs a per-instance converter.
 """
 from __future__ import annotations
 
@@ -69,7 +67,7 @@ PathLike = Union[str, "object"]
 def _open_for_read(path: PathLike) -> TextIO:
     """Open a CSV file for reading, or pass through ``"stdin"``.
 
-    Mirrors the ``"stdin"`` / ``"stdout"`` sentinel convention used
+    The literal ``"stdin"`` / ``"stdout"`` sentinel convention is used
     by ``io/roadmap.py`` and ``benchmark.py`` -- the literal string
     ``"stdin"`` means ``sys.stdin``. Anything else is opened as a
     file.

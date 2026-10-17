@@ -1,9 +1,6 @@
-"""Tests for Stage 1a -- the ROADMAP text format.
+"""Tests for the ROADMAP text format.
 
-Port of the `ProblemInstanceWithGeometry<Geometry2D>` constructor and print
-template specialisations at PSIPP-CTC_src/src/base/input.hpp:12-79.
-
-Coverage map (per PORTING.md §4 / brief):
+Coverage map:
   - header: n_vertices, n_edges, n_agents
   - coordinates: %030.15f formatting and exact values
   - edges: insertion order (out-list order IS the file order)
@@ -11,8 +8,8 @@ Coverage map (per PORTING.md §4 / brief):
   - radius: %030.15f formatting
 
 Round-trip is the main check: load -> print -> diff against the original.
-Both sample instances in PSIPP-CTC_src/problem_instances/roadmaps/ are
-copied into problem_instances/roadmaps/ for these tests.
+The ``sample_ref.txt`` and ``sample2_ref.txt`` files in
+``problem_instances/roadmaps/`` are gold-standard reference prints.
 """
 
 from __future__ import annotations
@@ -39,15 +36,9 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SAMPLE_DIR = REPO_ROOT / "problem_instances" / "roadmaps"
 SAMPLE = SAMPLE_DIR / "sample.txt"
 SAMPLE2 = SAMPLE_DIR / "sample2.txt"
-# Gold-standard reference prints from the C++ oracle. Regenerated with:
-#   docker run --rm -v $PWD/PSIPP-CTC_src:/repo:ro -v /tmp:/work
-#     tunoob4ever/2psipp:latest bash -c \
-#     '/work/print_roadmap /repo/problem_instances/roadmaps/sample.txt /work/out.txt'
-# where /work/print_roadmap is the standalone driver at
-# /tmp/opencode/print_roadmap.cpp (load via the input.hpp constructor and
-# call print). These files are what ``checkPlanValidity``-level parity
-# means at Stage 1a: a Python print of the same instance must match the
-# reference print byte-for-byte. See PORTING.md §10 check #3.
+# Gold-standard reference prints from the C++ reference. The
+# reference prints are what a Python print of the same instance
+# must match byte-for-byte.
 SAMPLE_REF_PRINT = SAMPLE_DIR / "sample_ref.txt"
 SAMPLE2_REF_PRINT = SAMPLE_DIR / "sample2_ref.txt"
 

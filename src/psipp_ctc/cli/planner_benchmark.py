@@ -1,18 +1,14 @@
 """CLI: solve roadmap problems and report planner statistics.
 
-Mirrors the reference tool ``planner_benchmark``:
-
-    PSIPP-CTC_src/src/planner_benchmark.cpp  (47 lines)
-
-Two invocation forms are supported, matching the C++:
+Two invocation forms:
 
     psipp-plan < roadmap_problem.txt > plan.txt
     psipp-plan config.yaml
 
-The first form passes the problem on stdin and uses the default
-``config/planner_benchmark.yaml`` from the C++'s tree (which the
-Python port reimplements inline as ``_DEFAULT_CONFIG``). The second
-form loads an arbitrary YAML config.
+The first form passes the problem on stdin and uses the inline
+default config (which mirrors the C++'s
+``config/planner_benchmark.yaml``: stdin source, PSIPP planner, stdout
+output). The second form loads an arbitrary YAML config.
 
 YAML schema (the same fields the C++'s ``planner_benchmark.cpp``
 consumes):
@@ -31,11 +27,10 @@ consumes):
     Output: <path or "stdout">    # optional; plans go here on success
     Iterations: <int>             # default 1 (matches the C++)
 
-The output is the ``Benchmark.display_all_results()`` table on stderr,
-matching ``benchmark.hpp:316``. The driver also writes
-``"   problem   time(ms)\\n"`` followed by one line per problem to
-stderr to mirror the C++'s problem-load timing report
-(``planner_benchmark.cpp:22, 32``).
+The output is the ``Benchmark.display_all_results()`` table on
+stderr. The driver also writes ``"   problem   time(ms)\\n"``
+followed by one line per problem to stderr to mirror the C++'s
+problem-load timing report.
 """
 from __future__ import annotations
 
@@ -50,10 +45,8 @@ from psipp_ctc.benchmark import Benchmark
 from psipp_ctc.config import make_planner, make_problem_instance
 
 
-#: Inline default config. Mirrors
-#: ``PSIPP-CTC_src/config/planner_benchmark.yaml``: stdin is the
-#: problem source, ``PSIPP`` is the planner, and ``stdout`` is the
-#: output destination.
+#: Inline default config. stdin is the problem source, ``PSIPP``
+#: is the planner, and ``stdout`` is the output destination.
 _DEFAULT_CONFIG: Dict[str, Any] = {
     "Problems": {
         "Stdin": {
@@ -73,10 +66,9 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 def _load_config(path: str) -> Dict[str, Any]:
     """Read a YAML config from ``path``.
 
-    The C++ uses ``YAML::LoadFile``; the Python port uses
-    ``yaml.safe_load`` (already a project dependency). The two are
-    observationally equivalent for the schema above because every
-    value is a primitive or a ``dict``/``list``.
+    Uses ``yaml.safe_load`` (already a project dependency). For the
+    schema above every value is a primitive or a ``dict``/``list``,
+    which is the read shape the consumer expects.
     """
     if path == "default":
         return _DEFAULT_CONFIG
@@ -94,9 +86,8 @@ def main() -> None:
         nargs="?",
         default="default",
         help=(
-            "YAML configuration file. Default mirrors "
-            "PSIPP-CTC_src/config/planner_benchmark.yaml (stdin problem, "
-            "PSIPP planner, stdout output)."
+            "YAML configuration file. Default is stdin problem, "
+            "PSIPP planner, stdout output."
         ),
     )
     args = parser.parse_args()
@@ -104,14 +95,14 @@ def main() -> None:
     config = _load_config(args.config)
 
     benchmark = Benchmark()
-    # The C++ hardcodes ``iterations = 1`` (planner_benchmark.cpp:14);
-    # the YAML key is allowed as an extension for parity with the
+    # ``iterations`` defaults to 1, matching the C++; the YAML key
+    # is allowed as an extension for parity with the
     # incrementally-experiments driver.
     benchmark.iterations = int(config.get("Iterations", 1) or 1)
     if "time_limit" in config and config.get("time_limit") is not None:
         benchmark.time_limit = float(config["time_limit"])
 
-    # Problem-load timing report. Mirrors planner_benchmark.cpp:22-33.
+    # Problem-load timing report.
     sys.stderr.write("   problem   time(ms)\n")
     for name, prob_config in (config.get("Problems") or {}).items():
         t0 = time.monotonic()

@@ -1,4 +1,4 @@
-"""Stage 5 -- tests for the PrioritizedSIPP planner.
+"""Tests for the PrioritizedSIPP planner.
 
 This file covers two angles:
 
@@ -13,14 +13,10 @@ This file covers two angles:
    Berlin CDT instance. Parity means
    ``check_plan_validity`` accepts the plan AND
    ``makespan`` / ``sum_of_costs`` match the C++ output --
-   not byte-identical output. The Docker command is
-   ``docker run --rm -v $PWD/PSIPP-CTC_src:/repo:ro
-   -v $PWD/problem_instances/roadmaps:/work:ro
-   tunoob4ever/2psipp:latest bash -c
-   '/app/build/planner_benchmark /work/test_psipp.yaml'``
-   where ``test_psipp.yaml`` is a minimal config that runs
-   PSIPP on the Berlin CDT instance. The output is a
-   table; we extract ``makespan`` and ``sum_of_costs``.
+   not byte-identical output. The Docker command mounts the
+   YAML config and the Berlin instance into the prebuilt
+   image; the output is a table; we extract ``makespan``
+   and ``sum_of_costs``.
 
 If the Docker oracle is not available (e.g. no network), the
 parity tests are skipped with a clear message. The unit tests
@@ -368,8 +364,7 @@ def _run_oracle_psipp() -> Tuple[float, float]:
         "agents whose plan genuinely depends on the loose semantics) "
         "or a heap-order reproduction of ``std::priority_queue``'s "
         "implementation-defined tie-break; neither has been verified "
-        "to generalise, so the test is marked xfail pending Stage 5+ "
-        "follow-up."
+        "to generalise, so the test is marked xfail pending follow-up."
     ),
     strict=False,
 )
@@ -399,8 +394,7 @@ def test_parity_berlin_cdt_psipp() -> None:
     plan = planner.get_plan()
     py_makespan, py_sum_of_costs = explicit.check_plan_validity(plan)
 
-    # Tolerance: 1e-6 on the floats (Stage 4's numerical
-    # divergence is well within this).
+    # Tolerance: 1e-6 on the floats.
     assert math.isclose(
         py_makespan, oracle_makespan, rel_tol=1e-6, abs_tol=1e-6
     ), (

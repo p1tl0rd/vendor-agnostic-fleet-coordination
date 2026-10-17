@@ -1,18 +1,14 @@
 """CLI: generate a roadmap problem from a continuous-space problem.
 
-Mirrors the reference tool ``roadmap_generation``:
-
-    PSIPP-CTC_src/src/roadmap_generation.cpp  (31 lines)
-
-Two invocation forms are supported, matching the C++:
+Two invocation forms:
 
     psipp-generate-roadmap < spatial_problem.txt > roadmap_problem.txt
     psipp-generate-roadmap config.yaml
 
 The first form passes the spatial problem on stdin and uses the
-default ``config/roadmap_generation.yaml`` from the C++'s tree (which
-the Python port reimplements inline as ``_DEFAULT_CONFIG``). The
-second form loads an arbitrary YAML config.
+inline default config (which mirrors the C++'s
+``config/roadmap_generation.yaml``: kPRM(100, 10), stdin input, stdout
+output). The second form loads an arbitrary YAML config.
 
 YAML schema (the same fields the C++'s ``roadmap_generation.cpp``
 consumes):
@@ -32,14 +28,11 @@ consumes):
     Output: <path or "stdout">
     Iterations: <int>       # default 1
 
-The driver runs the generator ``iterations`` times; each call writes
-its output to ``output_file + str(count)`` (or just ``output_file``
-when ``iterations == 1``), matching the C++'s
-``roadmap_generation.cpp:23-28``. After each call it invokes
-``check_roadspace_validity`` on the generated roadmap to mirror the
-C++'s validation step (``roadmap_generation.cpp:28``); failures raise
-``ValueError`` and abort the run (the C++ writes to stderr and
-continues; the Python port makes failures fatal for clarity).
+The driver runs the generator ``iterations`` times; each call
+writes its output to ``output_file + str(count)`` (or just
+``output_file`` when ``iterations == 1``). After each call it
+invokes ``check_roadspace_validity`` on the generated roadmap;
+failures raise ``ValueError`` and abort the run.
 """
 from __future__ import annotations
 
@@ -56,10 +49,9 @@ from psipp_ctc.config import (
 from psipp_ctc.io import print_roadmap_problem
 
 
-#: Inline default config. Mirrors
-#: ``PSIPP-CTC_src/config/roadmap_generation.yaml``: stdin is the
-#: spatial problem source, kPRM(100, 10) is the generator, ``stdout``
-#: is the output destination.
+#: Inline default config. stdin is the spatial problem source,
+#: kPRM(100, 10) is the generator, ``stdout`` is the output
+#: destination.
 _DEFAULT_CONFIG: Dict[str, Any] = {
     "Generator": {
         "type": "kPRM",
@@ -96,9 +88,8 @@ def main() -> None:
         nargs="?",
         default="default",
         help=(
-            "YAML configuration file. Default mirrors "
-            "PSIPP-CTC_src/config/roadmap_generation.yaml (kPRM(100, 10) "
-            "generator, stdin spatial problem, stdout output)."
+            "YAML configuration file. Default is kPRM(100, 10) "
+            "generator, stdin spatial problem, stdout output."
         ),
     )
     args = parser.parse_args()
@@ -113,11 +104,10 @@ def main() -> None:
         generator.generate(spatial)
         suffix = "" if iterations == 1 else str(count)
         print_roadmap_problem(generator.problem_instance, output_file + suffix)
-        # ``checkRoadspaceValidity`` is the C++'s post-generation
-        # validation (``roadmap_generation.cpp:28``). The Python
-        # version raises ``ValueError`` on failure (see
-        # ``SpatialProblemInstance.check_roadspace_validity``); we let
-        # it propagate so the CLI exits with a non-zero status.
+        # ``check_roadspace_validity`` is the post-generation
+        # validation. The Python version raises ``ValueError`` on
+        # failure; we let it propagate so the CLI exits with a
+        # non-zero status.
         spatial.check_roadspace_validity(generator.problem_instance)
 
 

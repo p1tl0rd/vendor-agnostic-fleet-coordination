@@ -1,13 +1,14 @@
-"""Parsers and writers for problem/plan file formats.
+"""Parsers and writers for problem file formats.
 
-Stage 1a: the ROADMAP text format (`base/input.hpp`, lines 12-79) is in
-`roadmap.py`. Stage 1b: the SPATIAL polygon format plus the MAPF_Benchmark
-.map and .scen readers are in `spatial.py`. Stage 3 adds `load_scenario`
-to wire a .scen file into a `SpatialProblemInstance` (deferred from
-Stage 1b because it calls `isInside`, which needs the Space2D backend).
-The round-trip printer for spatial problems is NOT ported (see
-`spatial.py` module docstring -- the reference's `printTextFile` is not
-the inverse of `loadTextFile`, and is driver-local to `simplify_grid`).
+* ``roadmap.py`` -- the ROADMAP text format (vertices, edges, tasks, radius).
+* ``spatial.py`` -- the SPATIAL polygon format, MAPF_Benchmark ``.map`` and
+  ``.scen`` readers, and ``load_scenario`` which wires a ``.scen`` file
+  into a ``SpatialProblemInstance``.
+
+The round-trip printer for spatial problems is not implemented (see
+``spatial.py`` module docstring -- the reference's ``print_text_file`` is
+not the inverse of ``load_text_file``, and is driver-local to
+``simplify_grid``).
 """
 
 from psipp_ctc.io.roadmap import (

@@ -1,34 +1,30 @@
-"""Stage 5-follow-up -- planner benchmark harness.
+"""Planner benchmark harness.
 
-Mirrors
-  PSIPP-CTC_src/src/base/benchmark.hpp  (433 lines)
+Two orchestrators: ``RunPlanner`` (a single planning run, with
+metrics) and ``Benchmark`` (a registry of problem instances + planners
++ a runner that iterates over their cross product and aggregates).
+The non-spatial subset is carried here -- ``RoadmapBenchmarkAll`` and
+``RunSpatialPlanner`` are out of scope until the spatial planners
+themselves are ported (HANDOFF §11 item 4).
 
-The reference exposes two orchestrators: ``RunPlanner`` (a single planning
-run, with metrics) and ``Benchmark`` (a registry of problem instances +
-planners + a runner that iterates over their cross product and aggregates).
-This port carries the non-spatial subset -- ``RoadmapBenchmarkAll`` and
-``RunSpatialPlanner`` are out of scope until the spatial planners themselves
-are ported (HANDOFF §11 item 4, ``Decide the CCBS baseline strategy``).
-
-Metrics follow the C++ conventions:
+Metrics follow standard conventions:
 
 * ``used_time`` is the **total** wall-clock time of the solve, in
-  milliseconds. The Python ``time.monotonic`` analogue measures seconds,
-  converted at the read-out boundary.
+  milliseconds. The Python ``time.monotonic`` analogue measures
+  seconds, converted at the read-out boundary.
 * ``used_time_for_collisions`` is the cumulative ``problem.used_time``
-  (seconds) accumulated by the collision-timing re-entrant timer during
-  the solve, converted to milliseconds.
+  (seconds) accumulated by the collision-timing re-entrant timer
+  during the solve, converted to milliseconds.
 * ``ptime`` = ``used_time - used_time_for_collisions`` (planning time).
 * ``ctime`` = ``used_time_for_collisions`` (collision time).
 * Aggregation over runs uses **mean over successful runs only**; the
   per-row ``success`` flag is a float in ``[0, 1]`` (the success
-  fraction), matching ``displayAllResults``'s ``(double)success_count /
-  iterations``.
+  fraction).
 
-Failure handling mirrors the C++: a solver that throws or returns
+Failure handling: a solver that throws or returns
 ``succeeded() == False`` or fails ``check_plan_validity`` sets
-``success = False`` and zeroes its metrics, so the per-iteration mean is
-not poisoned.
+``success = False`` and zeroes its metrics, so the per-iteration mean
+is not poisoned.
 """
 from __future__ import annotations
 
@@ -44,10 +40,7 @@ from psipp_ctc.problem import Plan, ProblemInstance
 def get_used_memory_kb() -> float:
     """RSS in KB from ``/proc/self/status``.
 
-    Mirrors ``base/memory_usage.hpp::getUsedMemory``: reads the 24th
-    field (``vsize``) and the 25th (``rss``) of ``/proc/self/stat`` on
-    POSIX systems. Returns ``0.0`` on non-POSIX (the C++ emits a warning
-    and returns ``0``).
+    POSIX-only: returns ``0.0`` on non-POSIX platforms.
 
     NOTE: the C++ actually returns ``rss * page_size / 1024`` (i.e. RSS in
     KB). The implementation here mirrors that. The C++ ignores the
@@ -184,10 +177,9 @@ class RunPlanner:
 class BenchmarkResult:
     """Aggregated result row for one ``(problem, planner)`` pair.
 
-    Mirrors ``Benchmark::Result`` at ``benchmark.hpp:104-109``. The mean
-    fields default to their sentinel (``0.0`` / ``0``) so that a fully-failed
-    benchmark row is still well-formed and prints without exploding the
-    C++-style table.
+    The mean fields default to their sentinel (``0.0`` / ``0``) so that
+    a fully-failed benchmark row is still well-formed and prints
+    without exploding the table.
     """
 
     problem_instance_name: str = ""
@@ -206,10 +198,9 @@ class BenchmarkResult:
 class Benchmark:
     """Registry + runner.
 
-    Mirrors ``class Benchmark`` (``benchmark.hpp:102-433``). The
-    ``spatial_planners`` / ``generators`` registry and the spatial-only
-    ``RoadmapBenchmarkAll`` member are **not** ported (the spatial planners
-    are not in this tree).
+    The ``spatial_planners`` / ``generators`` registry and the
+    spatial-only ``RoadmapBenchmarkAll`` member are not included
+    (the spatial planners are not in this tree).
 
     Construction parameters
     -----------------------
@@ -266,15 +257,13 @@ class Benchmark:
         plan: Plan,
         file_name: str,
     ) -> None:
-        """Emit the C++'s ``printPlan`` output to ``file_name``.
+        """Emit the plan in waypoint format to ``file_name``.
 
-        Mirrors ``Benchmark::printPlan`` at lines 127-158. The output format
-        is the C++'s free-form waypoints: per agent, a header line with
-        ``<radius>`` followed by ``<route_size>``, then alternating
-        ``<time>`` and ``<vertex_x> <vertex_y>`` lines.
+        Per agent, a header line with ``<radius>`` followed by
+        ``<route_size>``, then alternating ``<time>`` and
+        ``<vertex_x> <vertex_y>`` lines.
 
-        The literal ``"stdout"`` sentinel (``benchmark.hpp:130``) is
-        preserved.
+        The literal ``"stdout"`` sentinel is preserved.
         """
         close_after = False
         if file_name == "stdout":
@@ -302,16 +291,14 @@ class Benchmark:
             out.close()
 
     def display_all_results(self) -> None:
-        """Mirror of ``displayAllResults``.
+        """Print the aggregated results table to stderr.
 
-        Format matches ``benchmark.hpp:316-333`` exactly: a header line with
-        10 columns, then one line per result with the same 10 columns.
-        All floats use ``%10.xf`` formats (with the precision matching the
-        C++ column widths).
+        A header line with 10 columns, then one line per result with
+        the same 10 columns. All floats use ``%10.xf`` formats (with
+        the precision matching the C++ column widths).
         """
-        # Use a list buffer so callers can capture or pipe the output to
-        # wherever they need it. The CLI writes this to ``stderr`` to match
-        # the C++ (``benchmark.hpp:316``: ``fprintf(stderr, ...)``).
+        # Use a list buffer so callers can capture or pipe the output
+        # to wherever they need it. The CLI writes this to ``stderr``.
         import io
 
         buf = io.StringIO()
@@ -348,12 +335,7 @@ class Benchmark:
         planner_name: str,
         output_file: str = "",
     ) -> BenchmarkResult:
-        """Run a single ``(problem, planner)`` pair.
-
-        Mirrors ``Benchmark::run`` (``benchmark.hpp:160-206``) and
-        ``Benchmark::runSpecified`` (``benchmark.hpp:208-226``, which dispatches
-        to ``run``).
-        """
+        """Run a single ``(problem, planner)`` pair."""
         if problem_instance_name not in self.problem_instances:
             raise KeyError(
                 f"Benchmark.run: unknown problem_instance_name "
@@ -421,8 +403,7 @@ class Benchmark:
     def run_all(self, output_file: str = "") -> None:
         """Run every ``(planner, problem)`` pair.
 
-        Mirrors ``Benchmark::runAll`` (``benchmark.hpp:304-313``): iterate
-        over all planners and problems and ``run`` each pair.
+        Iterate over all planners and problems and ``run`` each pair.
         """
         for planner_name in list(self.planners.keys()):
             for problem_name in list(self.problem_instances.keys()):
@@ -437,25 +418,23 @@ class Benchmark:
     ) -> None:
         """Sweep agent-count from 1 to ``max_n_agents`` and emit a CSV row per run.
 
-        Mirrors ``Benchmark::runIncrementallyAllPairs``
-        (``benchmark.hpp:236-302``). Each row is
+        Each row is
 
             <problem_name>,<planner_name>,<n_agents>,<perm_id>,<count>,
             <makespan>,<sumofcosts>,<used_time>
 
-        where ``-1.0`` makespan / sum-of-costs signal a failed run, matching
-        the C++ ``printf("%10.3lf")`` formats at lines 284/290.
+        where ``-1.0`` makespan / sum-of-costs signal a failed run.
 
-        The set of "running pairs" (``pairs_to_runs``) is per-iteration:
-        each iteration has its own set, and a failure on iteration ``count``
-        removes the pair from that iteration's set. We rebuild that per-
-        iteration set in Python without mutating ``self.pairs_to_run``,
-        so repeated calls are safe.
+        The set of running pairs (``pairs_to_runs``) is per-iteration:
+        each iteration has its own set, and a failure on iteration
+        ``count`` removes the pair from that iteration's set. We rebuild
+        that per-iteration set in Python without mutating
+        ``self.pairs_to_run``, so repeated calls are safe.
 
-        Tasks are sampled from the saved ``all_tasks`` snapshot of the
-        original instances — mutating the planner's task list in place is
-        safe because each ``set_instance`` call re-binds the planner's
-        ``problem`` to the freshly mutated instance.
+        Tasks are sampled from the saved ``all_tasks`` snapshot of
+        the original instances. Each ``set_instance`` call re-binds
+        the planner's task list to the freshly mutated instance, so
+        repeated calls are safe.
         """
         permutations = permutations or []
 
@@ -560,9 +539,8 @@ class Benchmark:
     ) -> Optional[BenchmarkResult]:
         """Run a single pair after validating names.
 
-        Mirror of ``Benchmark::runSpecified`` (``benchmark.hpp:208-226``).
-        Returns ``None`` if either name is unknown, mirroring the C++ which
-        writes a ``stderr`` message and returns without running.
+        Returns ``None`` if either name is unknown, writing a
+        ``stderr`` message and returning without running.
         """
         if problem_instance_name not in self.problem_instances:
             import sys

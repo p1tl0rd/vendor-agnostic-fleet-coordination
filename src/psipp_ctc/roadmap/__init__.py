@@ -1,15 +1,16 @@
-"""Roadmap generation (Stage 3).
+"""Roadmap generation.
 
-Three generators, mirroring
-``PSIPP-CTC_src/src/roadmap_generators/{Grid,ProbabilisticRoadmap,
-ConstrainedTriangulation}.cpp``.
+Three generators, taking a continuous-space spatial problem and
+returning a roadmap (graph of vertices and edges) that the planner
+solves on:
 
-  - :func:`grid.generate_grid` -- uniform 2D grid, K-connectivity
-  - :func:`probabilistic_roadmap.generate_kprm` -- k-Nearest PRM
-  - :func:`probabilistic_roadmap.generate_prm` -- radius PRM
-  - :func:`constrained_triangulation.generate_cdt` -- CDT (with
-    scipy.spatial.Delaunay + shapely offset filter, see module
-    docstring for the CGAL deviation)
+  - :func:`grid.generate_grid` -- uniform 2D grid, K-connectivity.
+  - :func:`probabilistic_roadmap.generate_kprm` -- k-Nearest PRM.
+  - :func:`probabilistic_roadmap.generate_prm` -- radius PRM.
+  - :func:`constrained_triangulation.generate_cdt` -- CDT
+    (constrained Delaunay triangulation; with ``scipy.spatial.Delaunay``
+    + a shapely offset filter, see the module docstring for the
+    CGAL-deviation discussion).
 
 The geometry backend is :mod:`psipp_ctc.roadmap.space_2d` (shapely +
 scipy.spatial.Delaunay). See its module docstring for the backend
@@ -17,8 +18,8 @@ decision and the numerical-divergence risk.
 
 All generators take a :class:`SpatialProblemInstance` and return a
 :class:`ProblemInstanceWithGeometry` whose ``edges`` is an adjacency
-list (``edges[v] = [target, ...]`` -- the contract every downstream
-stage and the text I/O format depend on).
+list (``edges[v] = [target, ...]`` -- the contract every planner
+and the text I/O format depend on).
 """
 
 from psipp_ctc.roadmap.constrained_triangulation import generate_cdt

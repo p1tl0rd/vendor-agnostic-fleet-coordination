@@ -1,7 +1,4 @@
-"""Stage 2 -- the continuous-time collision algebra.
-
-Port of
-  PSIPP-CTC_src/src/base/geometry_2D.hpp  (285 lines)
+"""The continuous-time collision algebra.
 
 This is the algebraic heart of the system. Every continuous-time collision
 query in the planner funnels through one of two kernels:
@@ -44,7 +41,7 @@ Preserve exactly
   t=dt1, t=s+dt0, interior). The merge is min-of-lowers and max-of-uppers
   into the running ``[collision_start, collision_end]`` pair.
 * The empty-interval sentinel ``(INF, -INF)`` (lower > upper).
-* ``INF = math.inf`` is the reference's ``std::numeric_limits<double>::infinity()``.
+* ``INF = math.inf`` represents positive infinity.
 """
 
 from __future__ import annotations
@@ -54,18 +51,18 @@ from typing import Tuple
 
 from psipp_ctc.problem import Point
 
-#: The C++ ``Geometry2D::EPS = 0.0``. Distinct from
-#: ``ProblemInstance.EPS = 1e-8`` and ``SpatialProblemInstance.EPS = 1e-6``
-#: (PORTING.md trap 5). Do not unify.
+#: The geometry kernel's tolerance. Distinct from
+#: ``ProblemInstance.EPS = 1e-8`` and ``SpatialProblemInstance.EPS = 1e-6``.
+#: Do not unify.
 GEOMETRY_EPS: float = 0.0
 
-#: The C++ ``Geometry2D::INF``. Sentinel for empty intervals and unbounded
-#: ranges. Used by the EEC kernel's running merge.
+#: Sentinel for empty intervals and unbounded ranges. Used by the
+#: EEC kernel's running merge.
 INF: float = math.inf
 
 
 # ---------------------------------------------------------------------------
-# Primitive inequality solvers (geometry_2D.hpp:27-76)
+# Primitive inequality solvers
 # ---------------------------------------------------------------------------
 
 
@@ -73,8 +70,6 @@ def solve_linear_inequation(
     A: float, B: float, lower: float, upper: float
 ) -> Tuple[float, float]:
     """Solve ``A*x + B <= 0`` intersected with ``[lower, upper]``.
-
-    Mirrors ``Geometry2D::solve_linear_inequation`` (geometry_2D.hpp:27-38).
 
     * If ``A < -EPS`` (negative), the inequality pulls the **lower** bound
       up to ``-B/A``.
@@ -102,8 +97,6 @@ def solve_quadratic_inequation(
     A: float, B: float, C: float, lower: float, upper: float
 ) -> Tuple[float, float]:
     """Solve ``A*x^2 + 2*B*x + C <= 0`` (``A >= 0``), REPLACING bounds.
-
-    Mirrors ``Geometry2D::solve_quadratic_inequation`` (geometry_2D.hpp:39-68).
 
     The C++ assumes ``A >= 0`` (precondition; the caller is responsible
     for the check). It REPLACES the input ``[lower, upper]`` with the
@@ -159,7 +152,6 @@ def solve_vector_inequation(
 ) -> Tuple[float, float]:
     """Solve ``|a*t + b| <= r``, REPLACING bounds.
 
-    Mirrors ``Geometry2D::solve_vector_inequation`` (geometry_2D.hpp:69-76).
     Reduces to the quadratic with
     ``A = |a|^2``, ``B = a.b``, ``C = |b|^2 - r^2``. The squared
     inequality ``|a*t + b|^2 <= r^2`` is equivalent to the original
@@ -187,7 +179,7 @@ def distance(p0: Point, p1: Point) -> float:
 
 
 def inner(p0: Point, p1: Point) -> float:
-    """Dot product. Mirrors ``Geometry2D::inner`` (geometry_2D.hpp:264-267).
+    """Dot product.
 
     Used by the broad phase to compare a vertex's projection onto a
     segment direction and perpendicular.
@@ -200,10 +192,9 @@ def collision_check_static(
 ) -> bool:
     """Two stationary disc agents: conflict iff ``distance < 2r - eps``.
 
-    Mirrors ``Geometry2D::CollisionCheck(p0, p1, r, EPS)``
-    (geometry_2D.hpp:83-87). The default ``eps = 0`` matches the
-    geometry module's strict convention; ``ProblemInstance`` callers
-    pass their own ``1e-8`` here.
+    The default ``eps = 0`` matches the geometry module's strict
+    convention; ``ProblemInstance`` callers pass their own ``1e-8``
+    here.
     """
     return distance(p0, p1) < 2.0 * r - eps
 
@@ -223,8 +214,7 @@ def get_collision_interval_vec(
     is the time range on the moving agent's clock during which the two
     come within ``2r``.
 
-    Mirrors ``Geometry2D::getCollisionInterval(p0, sp1, tp1, dt1, r)``
-    (geometry_2D.hpp:134-148). The construction:
+    The construction:
 
         a = -(tp1 - sp1) / dt1
         b = p0 - sp1
@@ -260,9 +250,8 @@ def collision_check_vertex_edge(
 ) -> bool:
     """Stationary ``p0`` over ``[st0, tt0]`` vs moving agent in ``[st1, tt1]``.
 
-    Mirrors ``Geometry2D::CollisionCheck(p0, st0, tt0, sp1, st1, tp1, tt1, r, EPS)``
-    (geometry_2D.hpp:150-162). Returns True iff the VEC window overlaps
-    the stationary agent's time window.
+    Returns True iff the VEC window overlaps the stationary agent's
+    time window.
     """
     lower, upper = (0.0, 0.0)
     collide, lower, upper = get_collision_interval_vec(
@@ -291,7 +280,7 @@ def get_collision_interval_eec(
     with ``s <= t <= s + dt1``.
 
     The five candidate configurations of the inter-agent distance
-    minimum, in the C++ order (geometry_2D.hpp:164-253):
+    minimum, in order:
 
         1. ``t = 0``     -- agent 0 at its start.
         2. ``t = s``     -- simultaneous start.
@@ -401,10 +390,9 @@ def collision_check_moving(
     """Two moving agents: True iff their time windows overlap AND
     the separating distance falls below ``2r`` at some shared time.
 
-    Mirrors ``Geometry2D::CollisionCheck(sp0, st0, tp0, tt0, sp1, st1, tp1, tt1, r, EPS)``
-    (geometry_2D.hpp:89-132). The check is the closed-form evaluation
-    of the quadratic ``A*t^2 + 2*B*t + C`` at the shared window
-    endpoints and the vertex ``t = -B/A``.
+    The check is the closed-form evaluation of the quadratic
+    ``A*t^2 + 2*B*t + C`` at the shared window endpoints and the vertex
+    ``t = -B/A``.
 
     Note: this is a strict-strategy check used by the dispatcher when
     BOTH agents are moving. The interval version is the EEC kernel

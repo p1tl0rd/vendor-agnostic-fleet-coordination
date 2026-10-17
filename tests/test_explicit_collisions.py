@@ -1,13 +1,9 @@
-"""Stage 4 -- differential test for the offline CTC annotation.
+"""Differential test for the offline CTC annotation.
 
-Mirrors ``src/test/explicit_collision_test.cpp`` (72 lines) in the
-reference. The C++ test loads
-``../problem_instances/roadmaps/generated.txt`` which does not exist
-on disk; we substitute ``problem_instances/roadmaps/sample.txt``
-which is identical to the reference's
-``PSIPP-CTC_src/problem_instances/roadmaps/sample.txt``. The brief
-explicitly authorises this substitution (PORTING.md §7, "Trap: the
-differential test needs a roadmap that does not exist yet").
+Loads a small roadmap, builds a geometric instance, builds an
+explicit-collisions instance from it, and compares the two on every
+VV boolean, every VEC boolean + interval, every EEC boolean +
+interval, and a sample of random time-overlap checks.
 
 Differential strategy
 ---------------------

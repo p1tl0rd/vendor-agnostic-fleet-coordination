@@ -1,7 +1,4 @@
-"""Stage 3 -- the ProbabilisticRoadmap generators (kPRM and PRM).
-
-Port of PSIPP-CTC_src/src/roadmap_generators/ProbabilisticRoadmap.cpp
-(239 lines, two classes).
+"""The ProbabilisticRoadmap generators (kPRM and PRM).
 
 kPRM (KNearestProbabilisticRoadmap)
 -----------------------------------
@@ -104,14 +101,12 @@ def _k_nearest(
 ) -> List[Tuple[float, int]]:
     """Return the ``k`` closest points to ``points[id]`` as ``(dist, id)`` pairs.
 
-    Mirrors ``KNearestProbabilisticRoadmap::getNeighbors``
-    (ProbabilisticRoadmap.cpp:15-34). Uses a max-heap of size k
-    (heapq with negated distances) to keep the running cost O(N log k)
-    rather than the O(N log N) of sorting the full distance vector.
+    Uses a max-heap of size k (heapq with negated distances) to keep
+    the running cost O(N log k) rather than the O(N log N) of sorting
+    the full distance vector.
 
     Note: ``k == 0`` is the special case used by the C++'s default-K
-    formula for ``n = 0`` (PORTING.md §6 trap 8, "no random
-    vertices"). Returns an empty list.
+    formula for ``n = 0`` ("no random vertices"). Returns an empty list.
     """
     if k <= 0:
         return []
@@ -143,9 +138,8 @@ def generate_kprm(
 ) -> ProblemInstanceWithGeometry:
     """Generate a kPRM roadmap.
 
-    Mirrors ``KNearestProbabilisticRoadmap::generate``
-    (ProbabilisticRoadmap.cpp:57-131). See module docstring for the
-    K formula and the special case ``number_of_vertices = 0``.
+    See module docstring for the K formula and the special case
+    ``number_of_vertices = 0``.
     """
     if K == 0:
         K = _default_k(number_of_vertices, dim=2)
@@ -248,9 +242,8 @@ def generate_prm(
 ) -> ProblemInstanceWithGeometry:
     """Generate a radius-PRM roadmap.
 
-    Mirrors ``RadiusProbabilisticRoadmap2D::generate``
-    (ProbabilisticRoadmap.cpp:164-238). Uses the Buckets2D broad phase
-    from Stage 2 to find candidate pairs in O(N) on average.
+    Uses the Buckets2D broad phase to find candidate pairs in O(N) on
+    average.
 
     If ``radius`` is 0, the C++ default formula
     ``(sqrt(6 * free_volume / pi) + small_value) * sqrt(log(n)/n)`` is

@@ -1,15 +1,12 @@
-"""Stage 4 -- offline CTC annotation.
-
-Port of
-  PSIPP-CTC_src/src/base/problem_with_explicit_collisions.hpp  (287 lines)
+"""Offline CTC annotation.
 
 The planner's online query budget is a few microseconds per call. Running
 the VEC and EEC kernels (linear / quadratic inequality chains) inside the
 inner loop is the wrong place. CTC materialises the conflict set once at
 construction time so the planner's online queries are pure map lookups.
 
-What the constructor does (mirrors the C++ lines 118-206)
----------------------------------------------------------
+What the constructor does
+-------------------------
 1. **Flatten the adjacency list into GLOBAL edge indices.** The planner
    names an edge by ``(source, out-list-index)``; the annotation names it
    by a single global integer. ``edge_ids[v][k]`` is the global id for v's
@@ -26,9 +23,8 @@ What the constructor does (mirrors the C++ lines 118-206)
 
 3. **Broad phase for EE candidates.** ``BentleyOttoman`` sweeps the full
    set of segments in random-rotated space, returning every pair of
-   segments that geometrically cross. The sweep is unseeded in the C++
-   (PORTING.md §6 trap 7, rule 14); the Python ``BentleyOttoman`` uses
-   the same unseeded ``random.SystemRandom``.
+   segments that geometrically cross. The sweep is unseeded; the
+   Python ``BentleyOttoman`` uses the same unseeded ``random.SystemRandom``.
 
 4. **Exact kernels per surviving candidate.** The VEC kernel
    (``get_collision_interval_vec``) and the EEC kernel
@@ -63,9 +59,7 @@ The 6-arg ``get_collision_interval`` is the EEC kernel with the
 ``(min_global_id, max_global_id)`` with ``(lo, up)`` in the natural
 time direction (relative to agent 1). When the caller passes the
 reversed pair, the time direction is mirrored, so the returned interval
-is ``(-up, -lo)``. This is the C++ lines 246-251 in
-``problem_with_explicit_collisions.hpp``. Do NOT "fix" the signs
-(cpp-to-python skill rule 9).
+is ``(-up, -lo)``. Do NOT "fix" the signs (cpp-to-python skill rule 9).
 
 Only the ``ve`` accessor list carries the reverse-time convention:
 ``get_all_ve_collisions(v)`` returns ``(src_of_e, edge_id_of_e, -upper,
@@ -101,11 +95,10 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     """Roadmap + tasks + 2D coordinates + agent radius + materialised
     VV / VEC / EEC tables.
 
-    Mirrors ``ProblemInstanceWithExplicitCollisions``
-    (``problem_with_explicit_collisions.hpp``). Constructed from any
-    ``ProblemInstanceWithGeometry``; the constructor copies the base
-    fields, builds the global edge indices, runs the broad phases, and
-    stores one exact interval per surviving VV / VEC / EEC pair.
+    Constructed from any ``ProblemInstanceWithGeometry``; the constructor
+    copies the base fields, builds the global edge indices, runs the
+    broad phases, and stores one exact interval per surviving VV / VEC
+    / EEC pair.
 
     Online queries are table lookups, not geometry calls. The 8-arg
     dispatcher ``_collision_check_dispatch`` (inherited from
@@ -233,9 +226,8 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     def _add_collision_ve(self, vertex: int, eid: int) -> None:
         """Add a VEC conflict ``(v, edge)`` if the exact test agrees.
 
-        Mirrors ``addCollisionVE`` (lines 64-83 of the C++). The
-        function is idempotent on ``collision_pairs_v2e``: a second
-        call with the same ``(v, eid)`` is a no-op. Skips degenerate
+        Idempotent on ``collision_pairs_v2e``: a second call with
+        the same ``(v, eid)`` is a no-op. Skips degenerate
         zero-length edges (self-loops), matching the C++ ``if (length
         == 0.0) return;``. Asserts the VEC kernel reports a
         collision, because the broad phase is supposed to have
@@ -266,9 +258,8 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     def _add_collision_ee(self, a: int, b: int) -> None:
         """Add an EEC conflict ``(edge_a, edge_b)`` if the exact test agrees.
 
-        Mirrors ``addCollisionEE`` (lines 85-110 of the C++). The
-        storage key is canonicalised: ``a <= b`` always. The lookup
-        side (``get_collision_interval`` 6-arg EE) handles the
+        The storage key is canonicalised: ``a <= b`` always. The
+        lookup side (``get_collision_interval`` 6-arg EE) handles the
         reverse-time sign swap when the caller asks for the
         reversed pair. Skips if either edge has zero length.
         """
@@ -299,10 +290,9 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     def _make_lists(self) -> None:
         """Build the four ``collisions_lists_*`` tables.
 
-        Mirrors ``makeLists`` (lines 30-62 of the C++). These are the
-        read-side lookup tables for ``get_all_*``; the planner reads
-        them per-vertex / per-edge when constructing the blocked-window
-        structure for the next agent.
+        These are the read-side lookup tables for ``get_all_*``; the
+        planner reads them per-vertex / per-edge when constructing
+        the blocked-window structure for the next agent.
 
         * ``v2v[v]`` -- list of vertices v collides with. Each
           ``(v0, v1)`` pair is appended in BOTH directions
@@ -372,9 +362,7 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     def collision_check_vv(self, v0: int, v1: int) -> bool:
         """VV: set membership of the canonicalised pair.
 
-        Mirrors ``CollisionCheck(v0, v1)`` at
-        ``problem_with_explicit_collisions.hpp:208-212``. The set is
-        stored with ``(min, max)`` ordering, so the caller can pass
+        The set is stored with ``(min, max)`` ordering, so the caller can pass
         either order. Replaces the geometry subclass's
         ``distance(p0, p1) < 2r - EPS`` test with a constant-time
         dictionary lookup. Both implementations use the same
@@ -389,16 +377,12 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
         forms (kernel + frame shift).
 
         3-arg ``(v0, sv1, eid1) -> (collide, lo, up)``
-            VEC kernel form. Mirrors
-            ``getCollisionInterval(v0, sv1, eid1, &lo, &up)`` at
-            lines 214-223 of the C++. Pure map lookup of
+            VEC kernel form. Pure map lookup of
             ``(v0, edge_ids[sv1][eid1])`` in ``collision_pairs_v2e``.
             ``(lo, up)`` is *relative to agent 1's start* (st1 = 0).
 
         4-arg ``(sv0, eid0, sv1, eid1) -> (collide, lo, up)``
-            EEC kernel form. Mirrors
-            ``getCollisionInterval(sv0, eid0, sv1, eid1, &lo, &up)``
-            at lines 237-254 of the C++. Storage is keyed by
+            EEC kernel form. Storage is keyed by
             ``(min_global, max_global)`` with ``(lo, up)`` in
             agent-1-natural direction. When the caller passes the
             reversed pair, the time axis is mirrored, returning
@@ -488,9 +472,7 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     ) -> bool:
         """VE time check: the VEC interval overlaps agent 0's window.
 
-        Mirrors ``CollisionCheck(v0, st0, tt0, sv1, st1, eid1)`` at
-        lines 225-235 of the C++. The condition is the VEC time
-        overlap:
+        The condition is the VEC time overlap:
 
             max(st0, st1 + lo) + EPS < min(tt0, st1 + up)
 
@@ -510,9 +492,7 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
     ) -> bool:
         """EE time check: ``st0 - st1`` is in the EEC open interval.
 
-        Mirrors ``CollisionCheck(sv0, st0, eid0, sv1, st1, eid1)`` at
-        lines 256-266 of the C++. The condition is the EEC time
-        overlap:
+        The condition is the EEC time overlap:
 
             lo + EPS < st0 - st1 < up - EPS
 
@@ -564,7 +544,7 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
         return self.collisions_lists_e2e[self.edge_ids[v][edge_id]]
 
     # ------------------------------------------------------------------
-    # check_plan_validity -- Stage 5 parity gate
+    # check_plan_validity
     # ------------------------------------------------------------------
 
     def check_plan_validity(
@@ -573,22 +553,20 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
         """Verify a plan is collision-free and compute
         ``(makespan, sum_of_costs)``.
 
-        Mirrors ``ProblemInstance::checkPlanValidity``
-        (``problem.hpp:341-407``) in its base-Cartesian-product
-        form. The geometry subclass overrides this with an
-        event-sweep variant in the C++ (``problem_with_geometry.hpp:207-292``);
-        the Python port keeps the base form for now -- the
-        N^2 x steps^2 loop is correct (the C++ asserts the
-        same) and the explicit-class kernels (table lookups in
-        Stage 4) keep the inner loop fast enough for parity
-        tests.
+        A Cartesian-product gate over every (agent, step) pair,
+        dispatching each pair to the 8-arg ``_collision_check_dispatch``
+        (VV / VEC / EEC) and to ``get_collision_interval`` for
+        explicit-collisions instances. The C++ has an event-sweep
+        variant on the geometry subclass; the Python port uses the
+        base form for now -- the O(N^2 x steps^2) loop is correct and
+        the table-lookup kernels keep the inner loop fast enough for
+        parity.
 
         On a valid plan: returns ``(makespan, sum_of_costs)``
         where ``makespan`` is the max per-agent cost and
         ``sum_of_costs`` is the sum.
 
-        On an invalid plan: raises ``RuntimeError`` with the
-        same messages the C++ throws:
+        On an invalid plan: raises ``RuntimeError`` with one of:
 
         * ``"agent starts before reach start vertex"`` -- a
           move's ``start_time`` is before the previous move's
@@ -666,7 +644,7 @@ class ProblemInstanceWithExplicitCollisions(ProblemInstanceWithGeometry):
         # the three concrete kernels (``collision_check_vv``,
         # ``collision_check_ve``, ``collision_check_ee``) --
         # all of which the explicit-collisions class has
-        # overridden with table lookups in Stage 4.
+        # overridden with table lookups.
         for i in range(n):
             for step0 in range(len(routes[i])):
                 for j in range(i + 1, n):

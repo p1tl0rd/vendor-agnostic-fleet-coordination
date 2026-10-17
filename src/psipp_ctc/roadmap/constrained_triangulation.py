@@ -1,12 +1,8 @@
-"""Stage 3 -- the Constrained Delaunay Triangulation generator.
-
-Port of
-  PSIPP-CTC_src/src/roadmap_generators/ConstrainedTriangulation.cpp  (116 lines)
-  PSIPP-CTC_src/src/roadmap_generators/ConstrainedTriangulation.hpp   (21 lines)
+"""The Constrained Delaunay Triangulation generator.
 
 The C++ uses ``CGAL::Constrained_Delaunay_triangulation_2``: a
 constrained triangulation that keeps specified segments as hard edges
-in the mesh. CGAL is banned by AGENTS.md; the Python port uses
+in the mesh. CGAL is not available; the Python port uses
 ``scipy.spatial.Delaunay`` (an *unconstrained* Delaunay) and
 re-implements the constraint behaviour as a post-filter.
 
@@ -83,9 +79,8 @@ def generate_cdt(
 ) -> ProblemInstanceWithGeometry:
     """Generate a CDT roadmap for ``spatial``.
 
-    Mirrors ``ConstrainedTriangulation::generate``
-    (ConstrainedTriangulation.cpp:22-115). See module docstring for
-    the deviation from CGAL's constrained Delaunay.
+    See module docstring for the deviation from CGAL's constrained
+    Delaunay.
 
     The output's vertex set is:
       - the C++'s discretised merge of task endpoints + random

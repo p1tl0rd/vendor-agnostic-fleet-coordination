@@ -1,8 +1,4 @@
-"""Stage 0 -- the data model.
-
-Port of
-  PSIPP-CTC_src/src/base/problem.hpp            (core: lines 17-70, 76-88)
-  PSIPP-CTC_src/src/base/problem_with_geometry.hpp
+"""The data model for a roadmap MAPF problem.
 
 A *roadmap* is a directed adjacency list: ``edges[source] = [target, ...]``.
 The identity of an edge is its index in that out-list -- there is no separate
@@ -11,13 +7,15 @@ The identity of an edge is its index in that out-list -- there is no separate
 ``edge_id < 0``.
 
 The geometry subclass adds 2D Euclidean coordinates and an agent radius.
-The reference templates ``ProblemInstanceWithGeometry<Geometry>``; in Python
-the only geometry used is 2D Euclidean, so the 2D case is hardcoded here. If
-another geometry backend appears later, parameterise via a ``Protocol``.
+The C++ reference templates ``ProblemInstanceWithGeometry<Geometry>``; in
+Python the only geometry used is 2D Euclidean, so the 2D case is hardcoded
+here. If another geometry backend appears later, parameterise via a
+``Protocol``.
 
-Collision / interval / validity methods are abstract at this stage. They are
-filled in by Stage 2 (geometry kernels), Stage 4 (explicit-collisions
-materialisation), and Stage 1 (I/O print formats).
+Collision / interval / validity methods are abstract on the base
+``ProblemInstance``. They are filled in by the geometry subclass
+(``ProblemInstanceWithGeometry``) and the explicit-collisions materialisation
+(``ProblemInstanceWithExplicitCollisions`` in ``ctc/``).
 
 Preserve exactly
 ----------------
@@ -33,7 +31,7 @@ Preserve exactly
 * ``set_number_of_vertex`` on the geometry subclass resizes **both**
   ``coordinates`` and ``edges``; the base version resizes only ``edges``. The
   two behaviours must be on the right class, or the two arrays silently
-  desync (PORTING.md §3 trap 1).
+  desync -- a known trap.
 """
 
 from __future__ import annotations
@@ -49,15 +47,15 @@ from typing import List, NamedTuple, Tuple
 
 
 class Point(NamedTuple):
-    """2D point. Mirrors the reference's ``Geometry::Point`` -- a struct with
-    ``x`` and ``y`` members. The geometry kernels index it as ``p.x`` and
-    ``p.y``; using ``NamedTuple`` keeps that attribute access in Python."""
+    """2D point. A struct with ``x`` and ``y`` members. The geometry
+    kernels index it as ``p.x`` and ``p.y``; using ``NamedTuple`` keeps
+    that attribute access in Python."""
     x: float
     y: float
 
 
 class AgentTask(NamedTuple):
-    """One agent's start and goal vertex. Mirrors ``ProblemInstance::AgentTask``."""
+    """One agent's start and goal vertex."""
     initial_vertex: int
     goal_vertex: int
 
@@ -88,9 +86,8 @@ class ProblemInstance:
 
     The adjacency list ``edges[source] = [target, ...]`` IS the graph; an edge
     is identified by ``(source, index)``. ``add_edge`` appends, so the order
-    of insertion **is** the edge id. This is the contract every downstream
-    stage and the text I/O format depend on. Do not introduce an ``Edge``
-    class (PORTING.md §3 trap 2).
+    of insertion **is** the edge id. This is the contract every planner and
+    the text I/O format depend on. Do not introduce an ``Edge`` class.
 
     Methods that depend on geometry (``get_edge_length``, ``get_coordinate_*``,
     ``get_agent_radius``, all ``collision_check`` / ``get_collision_interval``
@@ -105,7 +102,7 @@ class ProblemInstance:
     #: Epsilon used by the data model. The reference defines this as
     #: ``const double EPS = 1e-8`` on ``ProblemInstance``. Note: the geometry
     #: module's own ``EPS = 0`` is a *different* constant in a *different*
-    #: class; do not unify them (PORTING.md §5 trap 5).
+    #: class; do not unify them.
     EPS: float = 1e-8
 
     def __init__(self) -> None:
@@ -133,12 +130,11 @@ class ProblemInstance:
     def set_number_of_vertex(self, n: int) -> None:
         """Resize the adjacency list to ``n`` vertices.
 
-        This is the **base** behaviour (``problem.hpp:23-27``): only
-        ``edges`` is resized. The geometry subclass **overrides** this to
-        also resize ``coordinates``; that override is what keeps the two
-        arrays in lock-step. A base call on a geometry instance would leave
-        ``coordinates`` at its old size and silently desync (PORTING.md §3
-        trap 1).
+        This is the **base** behaviour: only ``edges`` is resized. The
+        geometry subclass **overrides** this to also resize
+        ``coordinates``; that override is what keeps the two arrays in
+        lock-step. A base call on a geometry instance would leave
+        ``coordinates`` at its old size and silently desync.
         """
         self.edges = [[] for _ in range(n)]
 
@@ -182,14 +178,15 @@ class ProblemInstance:
 
     # -- Abstract collision / interval / validity interface ---------------
     #
-    # The C++ base carries the multi-arg dispatchers concretely; Python has no
-    # static dispatch, so the dispatchers and the kernels are both deferred
-    # to Stage 2 (geometry). Stage 0 only exposes the surface; downstream
-    # stages decide how to implement the kernels and the dispatchers.
+    # The C++ base carries the multi-arg dispatchers concretely; Python has
+    # no static dispatch, so the dispatchers and the kernels are both
+    # deferred to the geometry subclass. This base only exposes the
+    # surface; the geometry subclass decides how to implement the kernels
+    # and the dispatchers.
 
     def collision_check(self, *args, **kwargs) -> bool:  # type: ignore[no-untyped-def]
-        """Stage 2 (geometry) implements the vertex/edge kernels and the
-        multi-arg dispatchers (see ``problem.hpp:90-138``)."""
+        """The geometry subclass implements the vertex/edge kernels and the
+        multi-arg dispatchers."""
         raise NotImplementedError
 
     def collision_check2(self, *args, **kwargs) -> bool:  # type: ignore[no-untyped-def]
@@ -202,12 +199,11 @@ class ProblemInstance:
         raise NotImplementedError
 
     # -- Dispatchers: route by edge_id<0 (wait) ---------------------------
-    # Mirrors ``ProblemInstance::CollisionCheck`` (problem.hpp:116-138) and
-    # the getCollisionInterval overloads at problem.hpp:185-207, 233-254.
-    # These are the time-frame-mirroring dispatchers: a wait on agent 1 is
-    # equivalent to a stationary check, and the time interval must be
-    # mirrored back into the caller's frame. The math is in
-    # :mod:`psipp_ctc.geometry.geometry_2d`; this class only does the
+    # These are the time-frame-mirroring dispatchers: a wait on
+    # agent 1 is equivalent to a stationary check, and the time
+    # interval must be mirrored back into the caller's frame. The
+    # math is in :mod:`psipp_ctc.geometry.geometry_2d`; this class
+    # only does the
     # routing.
 
     def _collision_check_dispatch(
@@ -215,8 +211,7 @@ class ProblemInstance:
     ) -> bool:
         """Route by ``edge_id < 0`` (waiting) to the right kernel.
 
-        Mirrors ``ProblemInstance::CollisionCheck(sv0, st0, eid0, tt0, sv1, st1, eid1, tt1)``
-        (``problem.hpp:116-138``). The four cases:
+        The four cases:
 
         * both waiting:    VV kernel.
         * 0 waits, 1 moves: VE kernel (VEC).
@@ -243,27 +238,26 @@ class ProblemInstance:
         """Two overloads (time-frame mirroring on the second).
 
         ``get_collision_interval(v0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            Mirrors ``problem.hpp:185-207``. If ``eid1 < 0`` (agent 1 is
-            waiting), the interval is ``[st1, tt1]`` if the agents
-            conflict; otherwise the kernel is a no-op. If ``eid1 >= 0``,
-            the VEC kernel is run and its ``[lower, upper]`` (relative
-            to agent 1's clock) is shifted into the caller's frame by
+            If ``eid1 < 0`` (agent 1 is waiting), the interval is
+            ``[st1, tt1]`` if the agents conflict; otherwise the
+            kernel is a no-op. If ``eid1 >= 0``, the VEC kernel is
+            run and its ``[lower, upper]`` (relative to agent 1's
+            clock) is shifted into the caller's frame by
             ``lower += st1, upper += st1``.
 
         ``get_collision_interval(sv0, eid0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            Mirrors ``problem.hpp:233-254``. If ``eid1 < 0``, the
-            EEC kernel is run with agent 1's clock as the inner
-            variable and the result is mirrored: ``lower = st1 - lower,
-            upper = tt1 - upper`` (reverse-time convention; do NOT
-            "fix" the signs -- see ``cpp-to-python`` skill rule 9). If
-            ``eid1 >= 0``, the EEC kernel is run in the normal way
-            and shifted by ``st1``.
+            If ``eid1 < 0``, the EEC kernel is run with agent 1's
+            clock as the inner variable and the result is mirrored:
+            ``lower = st1 - lower, upper = tt1 - upper``
+            (reverse-time convention; do NOT "fix" the signs -- see
+            ``cpp-to-python`` skill rule 9). If ``eid1 >= 0``, the
+            EEC kernel is run in the normal way and shifted by
+            ``st1``.
         """
         raise NotImplementedError
 
     def check_plan_validity(self, plan: Plan):  # type: ignore[no-untyped-def]
-        """Stage 2 implements; the geometry subclass then overrides with the
-        event-sweep variant from ``problem_with_geometry.hpp:207-292``."""
+        """The geometry subclass implements the event-sweep plan validator."""
         raise NotImplementedError
 
     def get_all_vv_collisions(self, vertex: int) -> List[int]:
@@ -335,7 +329,7 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     * ``AgentGeometry`` -- a single ``float`` (the disc radius).
     * ``distance`` -- Euclidean (``math.hypot``).
 
-    Subclasses (e.g. the explicit-collisions subclass in Stage 4) override
+    Subclasses (e.g. the explicit-collisions subclass in ``ctc/``) override
     the collision / interval methods to return table-lookup answers.
 
     The override of ``set_number_of_vertex`` is load-bearing: it must resize
@@ -357,12 +351,11 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     def set_number_of_vertex(self, n: int) -> None:
         """Resize ``coordinates`` and ``edges`` together.
 
-        Trap (PORTING.md §3, trap 1): the base version
-        (``problem.hpp:23-27``) resizes only ``edges``; the geometry version
-        (``problem_with_geometry.hpp:26-30``) resizes both. If a caller used
-        the base method on a geometry instance, ``coordinates`` would be
-        shorter than ``edges`` and every later ``coordinates[v]`` access
-        would either fail or read garbage.
+        Trap: the base version resizes only ``edges``; the geometry
+        version resizes both. If a caller used the base method on a
+        geometry instance, ``coordinates`` would be shorter than ``edges``
+        and every later ``coordinates[v]`` access would either fail or
+        read garbage.
         """
         self.coordinates = [Point(0.0, 0.0) for _ in range(n)]
         self.edges = [[] for _ in range(n)]
@@ -385,14 +378,11 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     def print_vertex(self, file, vertex: int) -> None:
         """Write the vertex's coordinates to ``file`` as ``"<x> <y>\\n"``.
 
-        Mirrors ``ProblemInstanceWithGeometry<Geometry2D>::printVertex``
-        (``problem_with_geometry.hpp:296-298``), which delegates to
-        ``Geometry2D::printPoint`` (``geometry_2D.hpp:260-262``). The
-        C++ uses ``%lf %lf\\n`` -- no padding, two floats (6 decimal
-        places by default for ``%lf``) separated by a space, trailing
-        newline. This is the format the ``Benchmark::printPlan``
-        output uses (``benchmark.hpp:152``); the roadmap text format
-        is separate and uses ``%030.15lf`` (see
+        The C++ uses ``%lf %lf\\n`` -- no padding, two floats (6
+        decimal places by default for ``%lf``) separated by a
+        space, trailing newline. This is the format the
+        ``Benchmark::printPlan`` output uses; the roadmap text
+        format is separate and uses ``%030.15lf`` (see
         :func:`print_roadmap_problem`).
         """
         p = self.coordinates[vertex]
@@ -413,14 +403,12 @@ class ProblemInstanceWithGeometry(ProblemInstance):
         tp = self.coordinates[target]
         return math.hypot(tp.x - sp.x, tp.y - sp.y)
 
-    # -- Stage 2 collision kernels (override the abstract base) ----------
-    # Mirrors the template specialisations on
-    # ``ProblemInstanceWithGeometry<Geometry2D>`` in problem.hpp / geometry_2D.hpp.
-    # Three concrete kernels (VV, VE, EE) plus the time-frame-mirroring
-    # ``get_collision_interval`` overloads from problem.hpp:185-254.
-    # The actual VEC and EEC math is in :mod:`psipp_ctc.geometry.geometry_2d`;
-    # this subclass only does the geometry lookups and the time frame
-    # bookkeeping.
+    # -- Collision kernels (override the abstract base) ------------------
+    # Three concrete kernels (VV, VE, EE) plus the time-frame-
+    # mirroring ``get_collision_interval`` overloads. The actual
+    # VEC and EEC math is in
+    # :mod:`psipp_ctc.geometry.geometry_2d`; this subclass only
+    # does the geometry lookups and the time frame bookkeeping.
     #
     # Naming: Python has no C++ overloading, so the four argument shapes
     # are exposed as four methods. The base class' ``_collision_check_dispatch``
@@ -430,11 +418,10 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     def collision_check_vv(self, v0: int, v1: int) -> bool:
         """Two static disc agents: ``distance < 2r - EPS``.
 
-        Mirrors ``Geometry2D::CollisionCheck(p0, p1, r, EPS)`` and the
-        abstract ``ProblemInstance::CollisionCheck(v0, v1)``. Uses
-        ``self.EPS`` (1e-8) so a VV conflict is *slightly* more
-        permissive than the geometric strict-2r check; this matches the
-        data-model EPS convention used elsewhere in the planners.
+        Uses ``self.EPS`` (1e-8) so a VV conflict is *slightly*
+        more permissive than the geometric strict-2r check; this
+        matches the data-model EPS convention used elsewhere in the
+        planners.
         """
         from psipp_ctc.geometry.geometry_2d import collision_check_static
         p0 = self.coordinates[v0]
@@ -448,8 +435,7 @@ class ProblemInstanceWithGeometry(ProblemInstance):
         sv1: int, st1: float, eid1: int,
     ) -> bool:
         """Stationary ``v0`` over ``[st0, tt0]`` vs moving edge ``eid1``
-        from ``sv1``. Mirrors ``geometry_2D.hpp:150-162`` and the
-        abstract ``ProblemInstance::CollisionCheck(v0, st0, tt0, sv1, st1, eid1)``.
+        from ``sv1``.
         """
         from psipp_ctc.geometry.geometry_2d import collision_check_vertex_edge
         p0 = self.coordinates[v0]
@@ -467,9 +453,7 @@ class ProblemInstanceWithGeometry(ProblemInstance):
         sv1: int, st1: float, eid1: int,
     ) -> bool:
         """Edge ``eid0`` from ``sv0`` vs edge ``eid1`` from ``sv1``,
-        both at unit speed. Mirrors the abstract
-        ``ProblemInstance::CollisionCheck(sv0, st0, eid0, sv1, st1, eid1)``
-        and the geometry-2D ``CollisionCheck`` with two timed segments.
+        both at unit speed.
         """
         from psipp_ctc.geometry.geometry_2d import collision_check_moving
         sp0 = self.coordinates[sv0]
@@ -494,42 +478,35 @@ class ProblemInstanceWithGeometry(ProblemInstance):
         The arity picks the form:
 
         * 3 args ``(v0, sv1, eid1) -> (collide, lo, up)``
-            VEC kernel form. Mirrors
-            ``ProblemInstanceWithGeometry::getCollisionInterval(v0, sv1,
-            eid1, &lo, &up)`` (``problem_with_geometry.hpp:106-119``).
-            Returns the VEC interval ``[lo, up]`` *relative to agent
-            1's start* (``st1 = 0``). If ``length == 0`` the kernel
-            skips and returns ``(False, 0, 0)``; otherwise it runs
+            VEC kernel form. Returns the VEC interval ``[lo, up]``
+            *relative to agent 1's start* (``st1 = 0``). If
+            ``length == 0`` the kernel skips and returns
+            ``(False, 0, 0)``; otherwise it runs
             ``get_collision_interval_vec`` exactly.
 
         * 4 args ``(sv0, eid0, sv1, eid1) -> (collide, lo, up)``
-            EEC kernel form. Mirrors
-            ``ProblemInstanceWithGeometry::getCollisionInterval(sv0,
-            eid0, sv1, eid1, &lo, &up)`` (``problem_with_geometry.hpp:171-187``).
-            Returns the EEC interval ``[lo, up]`` *relative to agent
-            1's start*. Skips if either edge has length 0; otherwise
-            runs ``get_collision_interval_eec`` exactly.
+            EEC kernel form. Returns the EEC interval ``[lo, up]``
+            *relative to agent 1's start*. Skips if either edge
+            has length 0; otherwise runs
+            ``get_collision_interval_eec`` exactly.
 
         * 5 args ``(v0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            VEC time-mirror form. Mirrors ``ProblemInstance::
-            getCollisionInterval(v0, sv1, st1, eid1, tt1, &lo, &up)``
-            (``problem.hpp:185-207``). If ``eid1 < 0`` (agent 1 is
+            VEC time-mirror form. If ``eid1 < 0`` (agent 1 is
             waiting), the interval is ``[st1, tt1]`` if the agents
-            conflict; otherwise the kernel is a no-op. If ``eid1 >=
-            0``, the VEC kernel is run and its ``[lower, upper]``
-            (relative to agent 1's clock) is shifted into the
-            caller's frame by ``lower += st1, upper += st1``.
+            conflict; otherwise the kernel is a no-op. If
+            ``eid1 >= 0``, the VEC kernel is run and its
+            ``[lower, upper]`` (relative to agent 1's clock) is
+            shifted into the caller's frame by ``lower += st1,
+            upper += st1``.
 
         * 6 args ``(sv0, eid0, sv1, st1, eid1, tt1) -> (collide, lo, up)``
-            EEC time-mirror form. Mirrors ``ProblemInstance::
-            getCollisionInterval(sv0, eid0, sv1, st1, eid1, tt1, &lo,
-            &up)`` (``problem.hpp:233-254``). If ``eid1 < 0``, the
-            EEC kernel is run with agent 1's clock as the inner
-            variable and the result is mirrored: ``lower = st1 -
-            lower, upper = tt1 - upper`` (reverse-time convention;
-            do NOT "fix" the signs -- see ``cpp-to-python`` skill
-            rule 9). If ``eid1 >= 0``, the EEC kernel is run in the
-            normal way and shifted by ``st1``.
+            EEC time-mirror form. If ``eid1 < 0``, the EEC kernel
+            is run with agent 1's clock as the inner variable and
+            the result is mirrored: ``lower = st1 - lower,
+            upper = tt1 - upper`` (reverse-time convention; do
+            NOT "fix" the signs -- see ``cpp-to-python`` skill
+            rule 9). If ``eid1 >= 0``, the EEC kernel is run in
+            the normal way and shifted by ``st1``.
         """
         from psipp_ctc.geometry.geometry_2d import (
             get_collision_interval_eec,
@@ -592,8 +569,7 @@ class ProblemInstanceWithGeometry(ProblemInstance):
             if eid1 < 0:
                 # Agent 1 is waiting: route through VEC with the
                 # arguments reversed (agent 1's start = agent 0's
-                # static point), then mirror the time frame.
-                # Mirrors the C++ at problem.hpp:239-243 which does
+                # static point), then mirror the time frame:
                 # ``getCollisionInterval(sv1, sv0, eid0, upper, lower)``
                 # followed by ``lower = st1 - lower; upper = tt1 - upper``.
                 p0 = self.coordinates[sv1]
@@ -635,36 +611,33 @@ class ProblemInstanceWithGeometry(ProblemInstance):
 
 
 # ---------------------------------------------------------------------------
-# SpatialProblemInstance  (Stage 1b)
+# SpatialProblemInstance
 # ---------------------------------------------------------------------------
 #
-# Port of PSIPP-CTC_src/src/base/spatial.hpp, lines 11-26 (the data members)
-# and Task struct (16-23). The class is templated on ``SpaceGeometry`` in the
-# C++; in Python the only ``SpaceGeometry`` used is ``Space2D``, so the type
-# parameters are hardcoded. The geometry-backed methods (``isInside``,
-# ``getBound``, ``checkRoadspaceValidity``, ``checkPlanValidity``) are
-# deferred to Stage 3 because they need the Space2D backend, the roadspace
-# validity check, and the planning-event sweep.
+# A continuous-space problem: a free polygon (outer ring + holes) plus a
+# list of (start, goal) ``SpatialTask`` pairs plus a disc radius. The class
+# is templated on ``SpaceGeometry`` in the C++ reference; in Python the only
+# ``SpaceGeometry`` used is ``Space2D``, so the type parameters are
+# hardcoded. The geometry-backed methods (``isInside``, ``getBound``,
+# ``checkRoadspaceValidity``, ``checkPlanValidity``) use a lazy
+# shapely-polygon backend that is built on first access and cached.
 #
-# Trap: THREE different EPS values in three classes (PORTING.md §4):
+# Trap: THREE different EPS values in three classes:
 #   Geometry2D::EPS              = 0       (geometry kernels)
 #   ProblemInstance::EPS         = 1e-8    (this file, data model)
 #   SpatialProblemInstance::EPS  = 1e-6    (clearance margin for isInside)
 # ``SpatialProblemInstance::EPS`` is a clearance margin, not a comparison
 # tolerance -- ``isInside(point)`` shrinks the free space by
-# ``agent_geometry - EPS`` (``spatial.hpp:29-30``). Do not unify it with the
-# other two.
+# ``agent_geometry - EPS``. Do not unify it with the other two.
 
 
 class SpatialTask:
     """One agent's start and goal in continuous space.
 
-    Mirrors ``SpatialProblemInstance::Task`` (``spatial.hpp:16-23``): a pair
-    of ``Point`` values in 2D continuous coordinates, no vertex id. The
-    roadspace-validity check (``spatial.hpp:70-85``) compares each task's
-    points to the corresponding vertices in the generated roadmap, and
-    Stage 5's ``checkPlanValidity`` (``spatial.hpp:96-155``) sweeps events
-    in the same coordinate frame.
+    A pair of ``Point`` values in 2D continuous coordinates, no vertex id.
+    The roadspace-validity check compares each task's points to the
+    corresponding vertices in the generated roadmap, and the
+    ``checkPlanValidity`` event sweep walks the same coordinate frame.
     """
 
     __slots__ = ("initial_point", "goal_point")
@@ -692,28 +665,24 @@ class SpatialProblemInstance:
     """Continuous-space problem: a free polygon + a list of (start, goal)
     tasks + a disc radius.
 
-    Mirrors ``SpatialProblemInstance<Space2D>`` (``spatial.hpp:11-26``). The
-    data members are:
+    Data members:
 
     * ``outer`` -- the outer polygon ring as a list of ``Point``, with the
       first point repeated at the end (closed ring). Produced by
-      ``loadTextFile`` (``input_spatial.hpp:31``) or by the right-hand
-      boundary tracer in ``loadGripMap`` (``input_spatial.hpp:147``).
+      ``load_spatial_problem`` (the polygon-format text loader) or by the
+      right-hand boundary tracer in ``load_grip_map``.
     * ``inners`` -- list of closed rings, one per hole. Same convention.
-      Order is the trace order, not geometric containment
-      (``input_spatial.hpp:143-158``). Empty if the file/map has no holes.
+      Order is the trace order, not geometric containment. Empty if the
+      file/map has no holes.
     * ``agent_geometry`` -- disc radius. The conflict threshold is
       ``2 * radius`` (strict ``<``).
     * ``tasks`` -- list of ``SpatialTask``. For a polygon-format file this
       comes from the file; for a .map + .scen pair it is built by
-      ``loadScenario`` (``input_spatial.hpp:184``), which is **deferred to
-      Stage 3** because it calls ``isInside()`` and therefore needs the
-      Space2D backend.
+      ``load_scenario``, which uses the ``is_inside`` point query.
 
-    Methods that depend on the Space2D backend -- ``isInside`` (point and
-    point-pair), ``getBound``, ``checkRoadspaceValidity``,
-    ``checkPlanValidity`` -- raise ``NotImplementedError`` here and are
-    filled in by Stage 3.
+    The geometry-backed methods (``is_inside``, ``get_bound``,
+    ``check_roadspace_validity``, ``check_plan_validity``) use a lazy
+    shapely-polygon backend that is built on first access and cached.
     """
 
     #: Clearance margin used by ``isInside`` (``spatial.hpp:27``). NOT a
@@ -739,16 +708,15 @@ class SpatialProblemInstance:
         # a way that does not need the backend.
         self._space_polygon_cache = None  # type: ignore[var-annotated]
 
-    # -- Geometry backend (Stage 3) --------------------------------------
+    # -- Geometry backend (shapely) --------------------------------------
 
     def _space_polygon(self):
         """Lazily build the shapely Polygon backing the Space2D methods.
 
-        Mirrors the C++ ``SpaceGeometry::Space`` type. Both ``outer`` and
-        each ``inners[i]`` are closed rings (first == last) per the
-        loaders in ``io/spatial.py``. shapely closes the ring
-        automatically so the loader's closing duplicate is dropped before
-        construction.
+        Both ``outer`` and each ``inners[i]`` are closed rings
+        (first == last) per the loaders in ``io/spatial.py``. shapely
+        closes the ring automatically so the loader's closing duplicate
+        is dropped before construction.
         """
         if self._space_polygon_cache is None:
             from psipp_ctc.roadmap.space_2d import _make_polygon
@@ -759,9 +727,6 @@ class SpatialProblemInstance:
         """True iff ``point`` is in the free polygon with ``agent_geometry``
         clearance.
 
-        Mirrors ``SpatialProblemInstance<Space2D>::isInside(Point)``
-        (``spatial.hpp:29-31``) which delegates to
-        ``Space2D::checkVertexInside(space, point, agent_geometry - EPS)``.
         The EPS is a *clearance margin*: a disc of radius
         ``agent_geometry`` centred at ``point`` must not cross any
         boundary.
@@ -775,10 +740,10 @@ class SpatialProblemInstance:
         """True iff a disc of radius ``agent_geometry`` can travel along the
         segment from ``p0`` to ``p1`` without crossing the boundary.
 
-        Mirrors ``spatial.hpp:33-37``. Used by the roadmap generators to
-        decide whether a candidate edge may be added: every edge of the
-        final roadmap must pass this test, otherwise the planner could
-        route an agent through a wall.
+        Used by the roadmap generators to decide whether a candidate
+        edge may be added: every edge of the final roadmap must pass
+        this test, otherwise the planner could route an agent through
+        a wall.
         """
         from psipp_ctc.roadmap.space_2d import check_edge_inside
         return check_edge_inside(
@@ -788,9 +753,9 @@ class SpatialProblemInstance:
     def get_bound(self, axis: int) -> Tuple[float, float]:
         """Bounding-box of the outer ring along ``axis`` (0 = x, 1 = y).
 
-        Mirrors ``spatial.hpp:39-41`` -> ``Space2D::getBound``. Used by
-        the Grid generator to size the cell lattice across the BBox;
-        cells that fall in holes are then dropped via ``is_inside``.
+        Used by the Grid generator to size the cell lattice across the
+        BBox; cells that fall in holes are then dropped via
+        ``is_inside``.
         """
         from psipp_ctc.roadmap.space_2d import get_bound
         return get_bound(self._space_polygon(), axis)
@@ -800,7 +765,7 @@ class SpatialProblemInstance:
     ) -> bool:
         """Validate a generated roadmap against the spatial problem.
 
-        Mirrors ``spatial.hpp:43-91``. Three checks:
+        Three checks:
 
         1. Every vertex of the roadmap lies in the free polygon (with
            ``agent_geometry - EPS`` clearance). A single failure prints

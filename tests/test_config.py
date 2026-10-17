@@ -1,9 +1,8 @@
-"""Stage 5-follow-up -- tests for the YAML config loaders.
+"""Tests for the YAML config loaders.
 
-The Python port's ``psipp_ctc.config`` mirrors the C++'s three
-``make*`` factories in ``base/load_problems.{cpp,hpp}``,
-``base/load_planners.{cpp,hpp}``, and
-``base/load_generators.{cpp,hpp}``. These tests assert that each
+The Python's ``psipp_ctc.config`` exposes four factories:
+``make_spatial_problem_instance``, ``make_problem_instance``,
+``make_planner``, ``make_generator``. These tests assert that each
 factory:
 
 * ``make_spatial_problem_instance`` builds a
@@ -397,8 +396,9 @@ def test_roadmap_generation_cli_runs_end_to_end_on_sample_spatial(capsys):
         sys.stdin = saved_stdin
         sys.argv = saved_argv
     out = stdout.getvalue()
-    # The first line of the roadmap text format is ``n_vertices n_edges
-    # n_agents`` (Stage 1a). All three are non-negative ints.
+    # The first line of the roadmap text format is
+    # ``n_vertices n_edges n_agents``. All three are non-negative
+    # ints.
     first = out.splitlines()[0]
     tokens = first.split()
     assert len(tokens) == 3
