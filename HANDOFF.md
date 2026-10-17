@@ -2,7 +2,7 @@
 
 **Read this first if you are a new agent (or a returning human) on this repo.**
 
-Last updated: 2026-10-17 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs done · 183 tests pass + 2 xfail (Berlin CDT parity — PSIPP and Benchmark.run)
+Last updated: 2026-10-17 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs + CSV merger done · 203 tests pass + 2 xfail (Berlin CDT parity — PSIPP and Benchmark.run)
 
 ---
 
@@ -19,7 +19,7 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror) + `print_vertex` (was missing — added to fix `Benchmark::printPlan`). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port. `benchmark.py` is the metrics harness + CSV producer. `config.py` is the YAML loader trio (`make_spatial_problem_instance` / `make_problem_instance` / `make_planner` / `make_generator`). `cli/planner_benchmark.py` and `cli/roadmap_generation.py` are wired to the YAML configs and the benchmark / generator stacks. 183 tests pass + 2 xfail (Berlin CDT parity — PSIPP and `Benchmark.run` both inherit the same root cause), in ~65 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). Problem types `Turning` / `Grid` raise `NotImplementedError` from the config factory. | The deliverable. `planners` has PSIPP. `benchmark.py` is the planner-metrics harness. `config.py` + the two CLIs mirror the reference's `planner_benchmark` / `roadmap_generation` drivers. |
+| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs + CSV merger done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror) + `print_vertex` (was missing — added to fix `Benchmark::printPlan`). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port. `benchmark.py` is the metrics harness + CSV producer. `config.py` is the YAML loader trio. `cli/planner_benchmark.py` and `cli/roadmap_generation.py` are wired to the YAML configs. `csv_merge.py` is the PSIPP / CCBS CSV merger (option 3 of item 4: re-use the C++'s `planning_incrementally` driver for the CCBS side, no port of `WrappedContinuousCBS2`). `cli/merge_csv.py` is the `psipp-merge-csv` CLI entry. 203 tests pass + 2 xfail (Berlin CDT parity — PSIPP and `Benchmark.run` both inherit the same root cause), in ~70 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). Problem types `Turning` / `Grid` raise `NotImplementedError` from the config factory. | The deliverable. `planners` has PSIPP. `benchmark.py` is the planner-metrics harness. `config.py` + the two CLIs mirror the reference's `planner_benchmark` / `roadmap_generation` drivers. `csv_merge.py` + `psipp-merge-csv` are the CCBS data-fusion path (option 3 of item 4). |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC-src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
@@ -222,11 +222,20 @@ port session; this section is only the short form and follows `docs/PORTING.md` 
    Problem types `Turning` / `Grid` and planner type `CCBS` raise
    `NotImplementedError` with HANDOFF-anchored messages (those C++
    subclasses are not in this tree).
-4. **Decide the CCBS baseline strategy.** `WrappedContinuousCBS2.cpp` (781) is out of scope
-   for the core port, but the thesis needs a CCBS side for the optimality-gap and
-   success-rate figures. Three options: port the adapter, keep calling the vendored C++
-   solver as an external binary, or merge the vendored solver's CSVs directly. This is a
-   project decision, not a port session.
+4. **Decide the CCBS baseline strategy.** ✅ done — option 3 chosen: merge the
+   vendored solver's CSVs directly. The C++ reference's
+   `experiments/planning_incrementally.cpp` driver emits the same 8-column CSV
+   the Python does (`problem_name,planner_name,number_of_agents,perm_id,
+   iteration,makespan,sum_of_costs,used_time` with
+   `%11s,%6s,%4d,%4d,%4d,%10.3lf,%10.3lf,%10d` formatting), so the CCBS side
+   is just another CSV with `planner_name=CCBS`. `src/psipp_ctc/csv_merge.py`
+   + `src/psipp_ctc/cli/merge_csv.py` (`psipp-merge-csv` entry point) are
+   the data-fusion tool: row-by-row concat with schema validation
+   (8-field count, type checks, `-1.0` failure sentinel allowed, header
+   auto-detected on the first input only). 20 new tests in
+   `tests/test_csv_merge.py`. End-to-end smoke confirms the Python's
+   `Benchmark.run_incrementally_all_pairs` output merges correctly with a
+   synthetic CCBS CSV (12 rows → 12 rows).
 5. **Retire the oracle** — delete `PSIPP-CTC_src/` and remove the `/PSIPP-CTC_src/` line
    from `.gitignore` **in the same commit** (`AGENTS.md`). Not before item 1 is closed.
 6. **Then the three improvement targets** in §6. That is the thesis contribution; the port

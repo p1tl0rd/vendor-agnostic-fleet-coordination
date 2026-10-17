@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 psipp-generate-roadmap = "psipp_ctc.cli.roadmap_generation:main"
+psipp-merge-csv = "psipp_ctc.cli.merge_csv:main"
 psipp-plan = "psipp_ctc.cli.planner_benchmark:main"
 
 [tool.setuptools.packages.find]
