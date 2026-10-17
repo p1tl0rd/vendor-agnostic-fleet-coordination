@@ -2,7 +2,7 @@
 
 **Read this first if you are a new agent (or a returning human) on this repo.**
 
-Last updated: 2026-10-16 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness done · 158 tests pass + 2 xfail (Berlin CDT parity — PSIPP and Benchmark.run)
+Last updated: 2026-10-17 · Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs done · 183 tests pass + 2 xfail (Berlin CDT parity — PSIPP and Benchmark.run)
 
 ---
 
@@ -19,7 +19,7 @@ behaviour exactly**. `PSIPP-CTC_src/` is the parity oracle, not part of the deli
 
 | Tree | State | Meaning |
 |---|---|---|
-| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port. `benchmark.py` is the metrics harness + CSV producer (port of `base/benchmark.hpp`, spatial-only bits out of scope until item 4). 158 tests pass + 2 xfail (Berlin CDT parity — PSIPP and `Benchmark.run` both inherit the same root cause), in ~100 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). | The deliverable. `planners` has PSIPP. `benchmark.py` is the planner-metrics harness. |
+| `src/psipp_ctc/**` | **Stage 0 + 1a + 1b + 2 + 3 + 4 + 5 + benchmark harness + YAML config loaders + CLIs done.** `problem.py` has data model + spatial data model + the 4-arity `get_collision_interval` (3-arg VEC kernel, 4-arg EEC kernel, 5-arg VEC time-mirror, 6-arg EEC time-mirror) + `print_vertex` (was missing — added to fix `Benchmark::printPlan`). `io/roadmap.py` is the byte-identical roadmap text format. `io/spatial.py` carries 4 spatial loaders + `load_scenario`. `geometry/` carries the 3 primitive solvers + VEC + EEC + moving-vs-moving + `Buckets2D` + `BentleyOttoman`. `roadmap/` carries `space_2d.py`, `grid.py`, `probabilistic_roadmap.py` (kPRM + PRM), `constrained_triangulation.py` (CDT). `ctc/explicit_collisions.py` is the offline annotation with global edge indices + table-lookup overrides for `collision_check_vv/ve/ee` and `get_collision_interval`. `planners/planner.py` is the abstract base; `planners/prioritized_sipp.py` is the PSIPP port. `benchmark.py` is the metrics harness + CSV producer. `config.py` is the YAML loader trio (`make_spatial_problem_instance` / `make_problem_instance` / `make_planner` / `make_generator`). `cli/planner_benchmark.py` and `cli/roadmap_generation.py` are wired to the YAML configs and the benchmark / generator stacks. 183 tests pass + 2 xfail (Berlin CDT parity — PSIPP and `Benchmark.run` both inherit the same root cause), in ~65 s. Planners left to ship: `WrappedContinuousCBS2`, `ExtendedIncreasingCostTreeSearch` (out of scope per Stage 5 brief). Problem types `Turning` / `Grid` raise `NotImplementedError` from the config factory. | The deliverable. `planners` has PSIPP. `benchmark.py` is the planner-metrics harness. `config.py` + the two CLIs mirror the reference's `planner_benchmark` / `roadmap_generation` drivers. |
 | `PSIPP-CTC_src/**` | Complete, working C++14 implementation (OMRON SINIC X, MIT). | Ground truth. Read-only. **Delete after the port completes** (and remove the `/PSIPP-CTC-src/` line from `.gitignore` then). |
 | `PSIPP-CTC_src/third_party/Continuous-CBS/**` | Vendored CCBS baseline (unmodified). | Optimality/scalability comparison point. |
 | `docs/` | Thesis `.docx` + 9 papers. Git-ignored. | Read for requirements, not for code. |
@@ -208,9 +208,20 @@ port session; this section is only the short form and follows `docs/PORTING.md` 
    planners are ported (item 4). 9 new tests in `tests/test_benchmark.py`.
 3. **Port the YAML config loaders and wire the two CLI stubs**
    (`base/load_problems.{cpp,hpp}`, `base/load_planners.{cpp,hpp}`,
-   `base/load_generators.{cpp,hpp}`). `cli/planner_benchmark.py` and
-   `cli/roadmap_generation.py` still `raise SystemExit("... not implemented yet")` and
-   there is no YAML config module in `src/psipp_ctc/` yet. These are the last `io/` pieces.
+   `base/load_generators.{cpp,hpp}`) ✅ done. `src/psipp_ctc/config.py` carries
+   `make_spatial_problem_instance`, `make_problem_instance`, `make_planner`,
+   `make_generator` (with a `_GeneratorAdapter` that mirrors the C++'s
+   `RoadmapGenerator<Space2D>` surface). `cli/planner_benchmark.py` and
+   `cli/roadmap_generation.py` are wired end-to-end: the `psipp-plan` and
+   `psipp-generate-roadmap` entry points accept a YAML config or fall back
+   to a default that mirrors the C++'s `config/planner_benchmark.yaml` /
+   `config/roadmap_generation.yaml` (stdin source, stdout output). 25 new
+   tests in `tests/test_config.py`. End-to-end manual test confirms the
+   Python's `psipp-plan` output is byte-identical to the C++ for the
+   sample roadmap (`2 0.050000\n2\n0.000000\n0.000000 0.000000\n...`).
+   Problem types `Turning` / `Grid` and planner type `CCBS` raise
+   `NotImplementedError` with HANDOFF-anchored messages (those C++
+   subclasses are not in this tree).
 4. **Decide the CCBS baseline strategy.** `WrappedContinuousCBS2.cpp` (781) is out of scope
    for the core port, but the thesis needs a CCBS side for the optimality-gap and
    success-rate figures. Three options: port the adapter, keep calling the vendored C++

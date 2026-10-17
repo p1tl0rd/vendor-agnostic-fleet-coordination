@@ -282,7 +282,7 @@ class Benchmark:
         else:
             out = open(file_name, "a")
             close_after = True
-        out.write(f"{len(plan)} {problem_instance.get_agent_radius()}\n")
+        out.write(f"{len(plan)} {problem_instance.get_agent_radius():f}\n")
         for agent in range(len(plan)):
             vertex = problem_instance.tasks[agent].initial_vertex
             t = 0.0
@@ -296,7 +296,7 @@ class Benchmark:
                 route.append((vertex, t))
             out.write(f"{len(route)}\n")
             for (v, t) in route:
-                out.write(f"{t}\n")
+                out.write(f"{t:f}\n")
                 problem_instance.print_vertex(out, v)
         if close_after:
             out.close()

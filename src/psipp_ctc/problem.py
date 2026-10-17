@@ -382,6 +382,22 @@ class ProblemInstanceWithGeometry(ProblemInstance):
     def get_agent_radius(self) -> float:
         return self.agent_geometry
 
+    def print_vertex(self, file, vertex: int) -> None:
+        """Write the vertex's coordinates to ``file`` as ``"<x> <y>\\n"``.
+
+        Mirrors ``ProblemInstanceWithGeometry<Geometry2D>::printVertex``
+        (``problem_with_geometry.hpp:296-298``), which delegates to
+        ``Geometry2D::printPoint`` (``geometry_2D.hpp:260-262``). The
+        C++ uses ``%lf %lf\\n`` -- no padding, two floats (6 decimal
+        places by default for ``%lf``) separated by a space, trailing
+        newline. This is the format the ``Benchmark::printPlan``
+        output uses (``benchmark.hpp:152``); the roadmap text format
+        is separate and uses ``%030.15lf`` (see
+        :func:`print_roadmap_problem`).
+        """
+        p = self.coordinates[vertex]
+        file.write(f"{p.x:f} {p.y:f}\n")
+
     def get_edge_length(self, source: int, edge_id: int) -> float:
         """Unit-speed assumption: edge length = travel time.
 
