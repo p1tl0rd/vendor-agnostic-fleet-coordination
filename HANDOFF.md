@@ -103,15 +103,22 @@ planner policy can be swapped. In the graph these nodes are tagged `improvement-
 
 ## 7. How to verify parity
 
-Docker oracle (reference build, prebuilt image, source bind-mounted read-only):
+Docker oracle (reference build, prebuilt image -- the source tree was
+retired, see §11 item 5; only the prebuilt binary in the image is the
+live C++ reference):
 
 ```bash
-docker run --rm -v $PWD/PSIPP-CTC_src:/repo:ro tunoob4ever/2psipp:latest bash -c \
-  'cd /repo && /app/build/roadmap_generation < problem_instances/spatial/sample.txt > /tmp/rm.txt \
+docker run --rm -i tunoob4ever/2psipp:latest bash -c \
+  '/app/build/roadmap_generation < problem_instances/spatial/sample.txt > /tmp/rm.txt \
    && /app/build/planner_benchmark < /tmp/rm.txt'
 ```
 
-(The README still says `psipp-ctc_src/`; the actual directory is `PSIPP-CTC_src/`.)
+Mount the host's ``problem_instances/`` and any config you need via
+``-v`` (see the ``tests/test_prioritized_sipp.py`` and
+``tests/test_benchmark.py`` docker invocations for worked examples).
+The image's ``/app/build/`` directory carries ``planner_benchmark``,
+``roadmap_generation``, ``roadmap_benchmark``, and the various YAML
+``make_roadmaps`` / ``simplify_grid`` drivers.
 
 Parity is not "same output bytes" — it is **`ProblemInstance::checkPlanValidity` accepting the
 plan**, plus matching makespan / sum-of-costs. `checkPlanValidity` is the independent oracle:
