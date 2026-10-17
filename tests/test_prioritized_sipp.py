@@ -282,7 +282,13 @@ def _run_oracle_psipp() -> Tuple[float, float]:
     try:
         cmd = [
             "docker", "run", "--rm",
-            "-v", os.path.abspath("PSIPP-CTC_src") + ":/repo:ro",
+            # The C++ reference's ``planner_benchmark`` binary is
+            # pre-built inside the Docker image at ``/app/build/``;
+            # only the YAML config and the Berlin instance are
+            # mounted. The historical ``/repo`` mount of the local
+            # ``PSIPP-CTC_src/`` tree is no longer needed (it was
+            # used when we built the C++ oracle inside the container;
+            # the image ships a pre-built binary).
             "-v", os.path.abspath(_BERLIN_PATH) + ":/work/Berlin_1024_3_CDT.txt:ro",
             "-v", yaml_path + ":/work/test.yaml:ro",
             _DOCKER_IMAGE,
